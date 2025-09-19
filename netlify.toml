@@ -5,3 +5,8 @@
 [functions]
   node_bundler = "esbuild"
   included_files = ["reporters.csv"]
+
+[[redirects]]
+  from = "/api/stream"
+  to = "/.netlify/functions/stream"
+  status = 200
