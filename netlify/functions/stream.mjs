@@ -1,11 +1,13 @@
+import { readFile } from 'fs/promises';
+
 export default async (req, context) => {
   try {
     const url = new URL(req.url);
     const q = (url.searchParams.get('q') || '').split('|').map(s => s.trim()).filter(Boolean);
     const tz = url.searchParams.get('tz') || (process.env.TIMEZONE || 'America/New_York');
 
-    const csvURL = new URL('../../reporters.csv', import.meta.url);
-    const csv = await fetch(csvURL).then(r => r.text());
+    const csvPath = new URL('../../reporters.csv', import.meta.url);
+    const csv = await readFile(csvPath, 'utf8');
     const reporters = parseCsv(csv);
 
     for (const r of reporters) {
@@ -14,6 +16,7 @@ export default async (req, context) => {
 
     const sinceUtcMs = Date.now() - 7*24*60*60*1000;
     const results = [];
+
     for (const r of reporters) {
       if (!r.did) continue;
       const feed = await fetchJSON(`https://public.api.bsky.app/xrpc/app.bsky.feed.getAuthorFeed?actor=${encodeURIComponent(r.did)}&limit=100`);
@@ -46,8 +49,10 @@ export default async (req, context) => {
         });
       }
     }
+
     results.sort((a,b) => b.ts - a.ts);
     return json({ items: results });
+
   } catch (e) {
     return new Response(JSON.stringify({ error: e.message || 'error' }), { status: 500, headers: { 'content-type': 'application/json' } });
   }
@@ -77,6 +82,7 @@ export default async (req, context) => {
     const rows = [];
     for (let i=1;i<lines.length;i++){
       const [handle='',did=''] = lines[i].split(',');
+      if (!handle) continue;
       rows.push({ handle: handle.trim(), did: did.trim() });
     }
     return rows;
@@ -86,3 +92,4 @@ export default async (req, context) => {
     return arr.some(k => lower.includes(String(k).toLowerCase()));
   }
 };
+
