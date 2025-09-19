@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>HoopsHype Bluesky Stream</title>
+<style>
+  body { font: 14px system-ui,-apple-system,Segoe UI,Roboto,Arial; margin:0; padding:16px; background:#fff; color:#111; }
+  .card { border-bottom:1px solid #eee; padding:12px 0; display:flex; gap:12px; }
+  .meta { font-size:12px; color:#555; }
+  img.avatar { width:40px; height:40px; border-radius:50%; object-fit:cover; }
+  .media { margin-top:8px; max-width:100%; height:auto; display:block; }
+  .empty { padding:24px; color:#555; }
+</style>
+<body>
+<div id="app" role="feed" aria-busy="true">Loading…</div>
+<script>
+(async () => {
+  const params = new URLSearchParams(location.search);
+  const q = params.get("q") || "";
+  const tz = params.get("tz") || "America/New_York";
+  const r = await fetch(`/api/stream?q=${encodeURIComponent(q)}&tz=${encodeURIComponent(tz)}`);
+  const data = await r.json();
+  const el = document.getElementById("app");
+  el.setAttribute('aria-busy','false');
+  if (!data.items || !data.items.length) {
+    el.innerHTML = `<div class="empty">No Bluesky posts found in the past week for: <b>${q}</b>.</div>`;
+  } else {
+    el.innerHTML = data.items.map(p => `
+      <article class="card">
+        <img class="avatar" alt="" src="${p.authorAvatar || ''}">
+        <div>
+          <div><strong>${p.authorDisplay}</strong> <span class="meta">@${p.authorHandle}</span></div>
+          <div class="meta">${p.tsLocal}</div>
+          <div>${p.html}</div>
+          ${p.mediaUrl ? `<a target="_blank" rel="noopener" href="${p.url}"><img class="media" src="${p.mediaUrl}" alt=""></a>` : ``}
+          <div class="meta"><a target="_blank" rel="noopener" href="${p.url}">Open on Bluesky</a></div>
+        </div>
+      </article>
+    `).join("");
+  }
+  const sendHeight = () => parent.postMessage({type:"bsky-embed-height", px: document.documentElement.scrollHeight }, "*");
+  new ResizeObserver(sendHeight).observe(document.body);
+  sendHeight();
+  setTimeout(() => location.reload(), 180000);
+})();
+</script>
+</body>
+</html>
