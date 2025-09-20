@@ -1,4 +1,4 @@
-// Bluesky stream function — CORS, UA, edge cache, strict matching
+// Bluesky stream — CORS, UA, edge cache, strict matching, daily rotation, configurable window
 import { readFile } from 'fs/promises';
 
 // ---------- CORS ----------
@@ -15,14 +15,17 @@ const OUTBOUND_HEADERS = {
 
 // ---------- tunables (override via Netlify env) ----------
 const CONCURRENCY      = Number(process.env.CONCURRENCY || 6);   // parallel author requests
-const MAX_REPORTERS    = Number(process.env.MAX_REPORTERS || 40); // authors scanned per call
 const TIME_BUDGET_MS   = 8000;   // stop work ~8s in so we return something, not a 504
 const PER_AUTHOR_LIMIT = 50;     // posts per author feed request
 const REQ_TIMEOUT_MS   = 1500;   // per-request upstream timeout (ms)
+const WINDOW_DAYS      = Number(process.env.WINDOW_DAYS || 15);  // 🆕 lookback window (days)
+
+// rotation defaults
+const ROTATE_TZ    = process.env.ROTATE_TZ || 'America/New_York';
+const ROTATE_COUNT = Number(process.env.ROTATE_COUNT || 80);
 
 // ---------- handler ----------
 export default async (req) => {
-  // CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: CORS });
   }
@@ -30,38 +33,42 @@ export default async (req) => {
   const started = Date.now();
   try {
     const url = new URL(req.url);
-
-    // editors can bypass CDN/browser cache: …&nocache=1
     const NO_CACHE = url.searchParams.get('nocache') === '1';
 
-    // quick liveness probe
     if (url.searchParams.get('ping') === '1') {
       return json({ ok: true, ts: new Date().toISOString() }, { noCache: NO_CACHE });
     }
 
-    const qTokens = (url.searchParams.get('q') || '')
-      .split('|').map(s => s.trim()).filter(Boolean);
+    const qTokens = (url.searchParams.get('q') || '').split('|').map(s => s.trim()).filter(Boolean);
     const tz = url.searchParams.get('tz') || (process.env.TIMEZONE || 'America/New_York');
 
-    // per-request override: ?limitReporters=40
-    const maxReporters = Number(url.searchParams.get('limitReporters') || MAX_REPORTERS);
-
-    // 1) Load reporters (GitHub raw via env, fallback to bundled file)
+    // ----- reporters + daily rotation -----
     const reportersCsv = await loadReportersCsv();
     const reportersAll = parseCsv(reportersCsv);
-    const reporters = reportersAll.slice(0, Math.max(1, maxReporters));
 
-    // 2) Resolve missing DIDs (small pool)
+    const wantCount = Math.max(
+      1,
+      Math.min(
+        reportersAll.length,
+        Number(url.searchParams.get('limitReporters')) || ROTATE_COUNT
+      )
+    );
+
+    const offset = reportersAll.length ? (dayOffset(ROTATE_TZ) % reportersAll.length) : 0;
+    const rotated = reportersAll.slice(offset).concat(reportersAll.slice(0, offset));
+    const reporters = rotated.slice(0, wantCount);
+
+    // ----- resolve DIDs -----
     await pool(
-      reporters.map(r => async () => {
-        if (!r.did && r.handle) r.did = await resolveDid(r.handle);
-      }),
+      reporters.map(r => async () => { if (!r.did && r.handle) r.did = await resolveDid(r.handle); }),
       CONCURRENCY
     );
     const ready = reporters.filter(r => r.did);
 
-    // 3) Fetch author feeds in parallel, respect time budget
+    // ----- fetch feeds -----
+    const sinceMs = Date.now() - WINDOW_DAYS * 24 * 60 * 60 * 1000;
     const items = [];
+
     await pool(
       ready.map(r => async () => {
         if (Date.now() - started > TIME_BUDGET_MS) return;
@@ -81,10 +88,10 @@ export default async (req) => {
           if (post.embed?.$type === 'app.bsky.embed.record' || post.embed?.record) continue; // quotes
 
           const created = Date.parse(post.record?.createdAt || post.indexedAt || '');
-          if (!created || created < Date.now() - 7 * 24 * 60 * 60 * 1000) continue; // last 7 days
+          if (!created || created < sinceMs) continue;     // 🎯 last WINDOW_DAYS days
 
           const text = post.record?.text || '';
-          if (qTokens.length && !matchesAny(text, qTokens)) continue; // strict match
+          if (qTokens.length && !matchesAny(text, qTokens)) continue;
 
           const postId = (post.uri || '').split('/').pop();
           const link = `https://bsky.app/profile/${post.author?.did}/post/${postId}`;
@@ -92,9 +99,7 @@ export default async (req) => {
           items.push({
             ts: created,
             tsLocal: new Intl.DateTimeFormat('en-US', {
-              timeStyle: 'short',
-              dateStyle: 'medium',
-              timeZone: tz
+              timeStyle: 'short', dateStyle: 'medium', timeZone: tz
             }).format(new Date(created)),
             authorDisplay: post.author?.displayName || post.author?.handle || 'Reporter',
             authorHandle: post.author?.handle || '',
@@ -109,7 +114,7 @@ export default async (req) => {
     );
 
     items.sort((a, b) => b.ts - a.ts);
-    return json({ items, scanned: ready.length, took_ms: Date.now() - started }, { noCache: NO_CACHE });
+    return json({ items, scanned: ready.length, took_ms: Date.now() - started, window_days: WINDOW_DAYS }, { noCache: NO_CACHE });
 
   } catch (e) {
     console.error('[stream] error', e && (e.stack || e.message || e));
@@ -120,13 +125,19 @@ export default async (req) => {
   }
 };
 
-// ---------- matching helpers (ignore URLs; whole-word for short aliases like "KD") ----------
-function stripUrls(s) { return s.replace(/https?:\/\/\S+/gi, ' '); }
-function normalize(s) {
-  return s.toLowerCase()
-    .normalize('NFD').replace(/\p{Diacritic}/gu, '') // Dončić -> doncic
-    .replace(/\s+/g, ' ').trim();
+// ---------- rotation helper ----------
+function dayOffset(tz) {
+  const now = new Date();
+  const [y, m, d] = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit'
+  }).format(now).split('-').map(Number);
+  const dayUTC = Date.UTC(y, m - 1, d);
+  return Math.floor(dayUTC / 86400000);
 }
+
+// ---------- matching helpers ----------
+function stripUrls(s) { return s.replace(/https?:\/\/\S+/gi, ' '); }
+function normalize(s) { return s.toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '').replace(/\s+/g, ' ').trim(); }
 function escapeRegExp(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
 function mkRegex(token) {
   const t = normalize(token);
@@ -141,10 +152,9 @@ function matchesAny(text, tokens) {
 
 // ---------- misc helpers ----------
 function json(obj, opts = {}) {
-  // Browser TTL ~60s, CDN TTL ~300s by default; editors can disable via &nocache=1
   const browserTTL = opts.noCache ? 0 : 60;   // seconds
   const cdnTTL     = opts.noCache ? 0 : 300;  // seconds
-  const swr        = opts.noCache ? 0 : 120;  // serve-stale-while-revalidate
+  const swr        = opts.noCache ? 0 : 120;
 
   const headers = {
     ...CORS,
@@ -164,9 +174,7 @@ async function fetchJSON(u, timeoutMs) {
     const r = await fetch(u, { signal: ctl.signal, headers: OUTBOUND_HEADERS });
     if (!r.ok) throw new Error(`fetch ${r.status}`);
     return await r.json();
-  } finally {
-    clearTimeout(to);
-  }
+  } finally { clearTimeout(to); }
 }
 
 async function resolveDid(handle) {
@@ -180,11 +188,7 @@ async function resolveDid(handle) {
 function firstImage(p) {
   return p?.embed?.images?.[0]?.fullsize || p?.record?.embed?.images?.[0]?.fullsize || null;
 }
-function addUtm(u, source) {
-  const url = new URL(u);
-  url.searchParams.set('utm_source', source);
-  return url.toString();
-}
+function addUtm(u, source) { const url = new URL(u); url.searchParams.set('utm_source', source); return url.toString(); }
 function escapeHtml(s) { return s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
 function parseCsv(text) {
