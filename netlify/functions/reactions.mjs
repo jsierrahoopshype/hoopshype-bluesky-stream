@@ -1,159 +1,199 @@
 // netlify/functions/reactions.mjs
-// Bluesky Reactions API (public search-only, no auth required)
-
-const UA = 'HoopsHype-Reactions/1.0 (+https://www.hoopshype.com)';
-const BASE = 'https://public.api.bsky.app/xrpc/app.bsky.feed.searchPosts';
-
 export default async (req) => {
   try {
     const url = new URL(req.url);
-    const q = (url.searchParams.get('q') || '').trim();
-    const hours = Math.max(1, Number(url.searchParams.get('hours') || 6));
-    const minReposts = Math.max(0, Number(url.searchParams.get('minReposts') || 0));
-    const minLikes = Math.max(0, Number(url.searchParams.get('minLikes') || 0));
-    const limit = Math.min(200, Math.max(1, Number(url.searchParams.get('limit') || 40)));
-    const includeReplies = url.searchParams.get('includeReplies') === '1';
-    const includeQuotes = url.searchParams.get('includeQuotes') === '1';
-    const sort = (url.searchParams.get('sort') || 'reposts').toLowerCase(); // 'reposts'|'likes'|'total'
+    const q = url.searchParams.get('q') || '';
+    const hours = Number(url.searchParams.get('hours') || '6');
+    const minReposts = Number(url.searchParams.get('minReposts') || '0');
+    const minLikes = Number(url.searchParams.get('minLikes') || '0');
+    const limit = Math.min(Number(url.searchParams.get('limit') || '40'), 100);
+    const sort = (url.searchParams.get('sort') || 'reposts').toLowerCase();
+    const includeReplies = url.searchParams.get('includeReplies') === 'true';
+    const includeQuotes = url.searchParams.get('includeQuotes') === 'true';
 
-    if (!q) {
-      return json({ items: [], meta: { q, reason: 'empty query' } }, { status: 200, noCache: true });
-    }
+    if (!q.trim()) return json({ items: [] });
 
-    const sinceTs = Date.now() - hours * 3600 * 1000;
+    // Headers that make Bluesky happier
+    const UA = [
+      'HoopsHype-Reactions/1.1',
+      `(https://www.hoopshype.com; contact:@${process.env.BSKY_HANDLE || 'unknown'})`,
+    ].join(' ');
 
-    let cursor = '';
-    const out = [];
-    const headers = {
+    const COMMON_HEADERS = {
+      'Accept': 'application/json',
       'User-Agent': UA,
-      'Accept': 'application/json'
+      // These two aren’t always required, but reduce false positives on some WAFs:
+      'Origin': 'https://www.hoopshype.com',
+      'Referer': 'https://www.hoopshype.com/',
     };
 
-    // paginate searchPosts
-    while (out.length < limit) {
-      const u = new URL(BASE);
-      u.searchParams.set('q', q);
-      u.searchParams.set('limit', '25'); // small pages; we stop early
-      if (cursor) u.searchParams.set('cursor', cursor);
-
-      const r = await fetch(u.toString(), { headers });
-      if (!r.ok) {
-        const txt = await r.text().catch(() => '');
-        return json({ error: `upstream ${r.status}`, detail: txt.slice(0, 500) }, { status: 502, noCache: true });
-      }
-      const data = await r.json();
-
-      const posts = Array.isArray(data?.posts) ? data.posts : [];
-      for (const p of posts) {
-        // time filter (indexedAt is ISO)
-        const ts = Date.parse(p.indexedAt || p.createdAt || 0);
-        if (Number.isFinite(ts) && ts < sinceTs) continue;
-
-        // filter replies/quotes if requested
-        const isReply = !!p.reply;
-        const isQuote = !!p.embed?.record; // quote posts carry a record embed
-        if (!includeReplies && isReply) continue;
-        if (!includeQuotes && isQuote) continue;
-
-        const likeCount = p.likeCount || 0;
-        const repostCount = p.repostCount || 0;
-        if (repostCount < minReposts) continue;
-        if (likeCount < minLikes) continue;
-
-        // extract first image if present
-        const mediaUrl = firstImage(p) || null;
-
-        out.push({
-          ts,                                     // unix ms
-          tsLocal: new Date(ts).toLocaleString('en-US', { hour12: true }),
-          authorDisplay: p.author?.displayName || p.author?.handle || '',
-          authorHandle: p.author?.handle || '',
-          authorAvatar: avatarUrl(p),
-          text: extractText(p),
-          html: escapeHTML(extractText(p)),
-          url: postUrl(p),
-          mediaUrl,
-          likeCount,
-          repostCount,
-          replyCount: p.replyCount || 0,
-          isReply: isReply ? 1 : 0,
-          isQuote: isQuote ? 1 : 0
+    // Try to authenticate (preferred path to avoid public edge 403s)
+    let accessJwt = '';
+    if (process.env.BSKY_HANDLE && process.env.BSKY_APP_PASSWORD) {
+      try {
+        const r = await fetch('https://bsky.social/xrpc/com.atproto.server.createSession', {
+          method: 'POST',
+          headers: { ...COMMON_HEADERS, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            identifier: process.env.BSKY_HANDLE,
+            password: process.env.BSKY_APP_PASSWORD,
+          }),
         });
-
-        if (out.length >= limit) break;
-      }
-
-      cursor = data?.cursor || '';
-      if (!cursor) break;
+        if (r.ok) {
+          const s = await r.json();
+          accessJwt = s.accessJwt || '';
+        }
+      } catch { /* fall through unauthenticated if needed */ }
     }
 
-    // sort
-    out.sort((a, b) => {
-      if (sort === 'likes') return b.likeCount - a.likeCount || b.ts - a.ts;
-      if (sort === 'total') return (b.likeCount + b.repostCount) - (a.likeCount + a.repostCount) || b.ts - a.ts;
-      // default: reposts
-      return b.repostCount - a.repostCount || b.ts - a.ts;
+    // Preferred: first-party xrpc on bsky.social with auth (if we have it)
+    const primary = await searchOnBskyXrpc({
+      q, limit,
+      headers: COMMON_HEADERS,
+      accessJwt,
     });
 
-    // respond
-    return json({ items: out.slice(0, limit), meta: { q, hours, minReposts, minLikes, includeReplies, includeQuotes, sort } });
+    if (primary.ok) {
+      return filterAndRespond(primary.posts, { hours, minReposts, minLikes, limit, sort, includeReplies, includeQuotes });
+    }
+
+    // If we got a hard 403 (your screenshot), retry with the legacy search host
+    if (primary.status === 403) {
+      const legacy = await searchLegacyHost({ q, limit, headers: COMMON_HEADERS });
+      if (legacy.ok) {
+        return filterAndRespond(legacy.posts, { hours, minReposts, minLikes, limit, sort, includeReplies, includeQuotes });
+      }
+      // If legacy also failed, surface the upstream 403
+      return json({ error: 'upstream 403', detail: legacy.detail || primary.detail || '' }, { status: 502, noCache: true });
+    }
+
+    // Other non-403 errors from xrpc
+    return json({ error: primary.detail || 'search error' }, { status: 502, noCache: true });
 
   } catch (e) {
-    return json({ error: String(e?.message || e) }, { status: 500, noCache: true });
+    return json({ error: e?.message || 'unknown' }, { status: 500, noCache: true });
   }
 };
 
-/* ---------------- helpers ---------------- */
 
-function extractText(p) {
-  // p.record?.text for app.bsky.feed.post
-  const rec = p?.record;
-  if (!rec) return '';
-  return String(rec?.text || '').trim();
-}
+/* ----------------------- helpers ----------------------- */
 
-function avatarUrl(p) {
-  const did = p?.author?.did;
-  // use Bluesky CDN avatar if provided
-  if (p?.author?.avatar) return p.author.avatar;
-  return did ? `https://cdn.bsky.app/img/avatar/plain/${did}@jpeg` : '';
-}
+// Use first-party host (bsky.social/xrpc) – best path when authenticated
+async function searchOnBskyXrpc({ q, limit, headers, accessJwt }) {
+  try {
+    const u = new URL('https://bsky.social/xrpc/app.bsky.feed.searchPosts');
+    u.searchParams.set('q', q);
+    u.searchParams.set('limit', String(Math.min(Math.max(limit, 1), 100)));
 
-function postUrl(p) {
-  const handle = p?.author?.handle;
-  const rkey = p?.uri?.split('/').pop();
-  return (handle && rkey) ? `https://bsky.app/profile/${handle}/post/${rkey}` : '';
-}
+    const h = { ...headers };
+    if (accessJwt) h['Authorization'] = `Bearer ${accessJwt}`;
 
-function firstImage(p) {
-  const emb = p?.embed;
-  // image embeds
-  if (emb?.$type === 'app.bsky.embed.images#view' && Array.isArray(emb.images) && emb.images[0]?.fullsize) {
-    return emb.images[0].fullsize;
+    const r = await fetch(u, { headers: h });
+    if (!r.ok) {
+      const detail = await safeText(r);
+      return { ok: false, status: r.status, detail };
+    }
+    const data = await r.json();
+    const posts = Array.isArray(data.posts) ? data.posts : [];
+    return { ok: true, posts };
+  } catch (err) {
+    return { ok: false, status: 0, detail: String(err) };
   }
-  // recordWithMedia (quote with image)
-  if (emb?.$type === 'app.bsky.embed.recordWithMedia#view' && emb.media?.$type === 'app.bsky.embed.images#view') {
-    const imgs = emb.media.images;
-    if (Array.isArray(imgs) && imgs[0]?.fullsize) return imgs[0].fullsize;
-  }
-  return null;
 }
 
-function escapeHTML(s) {
-  return String(s || '').replace(/[&<>"']/g, c =>
-    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])
+// Legacy search host (search.bsky.social) – returns a slightly different shape
+async function searchLegacyHost({ q, limit, headers }) {
+  try {
+    const u = new URL('https://search.bsky.social/search/posts');
+    u.searchParams.set('q', q);
+    u.searchParams.set('limit', String(Math.min(Math.max(limit, 1), 100)));
+
+    const r = await fetch(u, { headers });
+    if (!r.ok) {
+      const detail = await safeText(r);
+      return { ok: false, status: r.status, detail };
+    }
+    const data = await r.json();
+    // Legacy returns { posts: [{ post, reason? }...] }
+    const items = Array.isArray(data.posts) ? data.posts.map(x => x.post || x) : [];
+    return { ok: true, posts: items };
+  } catch (err) {
+    return { ok: false, status: 0, detail: String(err) };
+  }
+}
+
+async function safeText(r) {
+  try { return await r.text(); } catch { return ''; }
+}
+
+function filterAndRespond(rawPosts, opts) {
+  const { hours, minReposts, minLikes, limit, sort, includeReplies, includeQuotes } = opts;
+  const now = Date.now();
+  const windowMs = hours * 60 * 60 * 1000;
+
+  function isQuote(p) {
+    return !!(p?.embed?.record?.uri);
+  }
+  function isReply(p) {
+    return !!p?.reply;
+  }
+  function textFromRecord(rec) {
+    return (rec && typeof rec.text === 'string') ? rec.text : '';
+  }
+  function firstImageUrl(p) {
+    const imgs = p?.embed?.images || p?.embed?.media?.images || [];
+    return imgs[0]?.fullsize || imgs[0]?.thumb || '';
+  }
+  function escapeHTML(s='') {
+    return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+  }
+
+  const filtered = rawPosts
+    .filter(p => {
+      const t = p?.indexedAt ? Date.parse(p.indexedAt) : 0;
+      if (!t || now - t > windowMs) return false;
+      if (!includeReplies && isReply(p)) return false;
+      if (!includeQuotes && isQuote(p)) return false;
+      if ((p?.repostCount || 0) < minReposts) return false;
+      if ((p?.likeCount   || 0) < minLikes)   return false;
+      return true;
+    })
+    .map(p => ({
+      ts: Date.parse(p.indexedAt || p.createdAt || 0) || 0,
+      tsLocal: p.indexedAt || '',
+      authorDisplay: p?.author?.displayName || '',
+      authorHandle: p?.author?.handle || '',
+      authorAvatar: p?.author?.avatar || '',
+      text: textFromRecord(p?.record),
+      html: escapeHTML(textFromRecord(p?.record)).replace(/\n/g, '<br>'),
+      url: 'https://bsky.app/profile/' + (p?.author?.did || p?.author?.handle || '') + '/post/' + (p?.uri?.split('/').pop() || ''),
+      mediaUrl: firstImageUrl(p),
+      likeCount: Number(p?.likeCount || 0),
+      repostCount: Number(p?.repostCount || 0),
+      isReply: isReply(p) ? 1 : 0,
+      isQuote: isQuote(p) ? 1 : 0
+    }));
+
+  const sorted = filtered.sort((a, b) => {
+    if (sort.startsWith('like')) return b.likeCount - a.likeCount || b.ts - a.ts;
+    if (sort.startsWith('time')) return b.ts - a.ts;
+    return b.repostCount - a.repostCount || b.ts - a.ts; // default: reposts
+  });
+
+  return json(
+    { items: sorted.slice(0, limit) },
+    { status: 200, browserTTL: 0, cdnTTL: 180 }
   );
 }
 
-function json(obj, opts = {}) {
+function json(obj, opts={}) {
   const status = opts.status || 200;
-  const noCache = !!opts.noCache;
-  const headers = new Headers({ 'content-type': 'application/json; charset=utf-8' });
-  if (noCache) {
-    headers.set('cache-control', 'no-store');
+  const headers = { 'Content-Type': 'application/json' };
+  if (opts.noCache) {
+    headers['Cache-Control'] = 'no-store';
   } else {
-    // small shared cache (3 minutes) to be nice to Bluesky
-    headers.set('cache-control', 'public, max-age=0, s-maxage=180');
+    const cdnTTL = Number(opts.cdnTTL ?? 180);
+    headers['Cache-Control'] = `public, s-maxage=${cdnTTL}, stale-while-revalidate=120`;
   }
   return new Response(JSON.stringify(obj), { status, headers });
 }
