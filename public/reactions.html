@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Bluesky Reactions Builder</title>
+<style>
+  :root{--accent:#0a66c2}
+  body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:0;padding:24px;background:#fafafa;color:#111}
+  h1{font-size:22px;margin:0 0 16px}
+  .panel{background:#fff;border:1px solid #e6e6e6;border-radius:8px;padding:16px;margin:0 0 16px}
+  .row{display:flex;gap:12px;flex-wrap:wrap}
+  .col{display:flex;flex-direction:column;gap:6px;min-width:160px}
+  label{font-size:12px;color:#555}
+  input[type="text"],input[type="number"],select{padding:8px 10px;border:1px solid #d8d8d8;border-radius:6px;font:inherit;background:#fff}
+  input[type="number"]{width:120px}
+  .checks{display:flex;gap:16px;align-items:center}
+  .btn{appearance:none;border:0;border-radius:8px;padding:10px 14px;font-weight:600;background:var(--accent);color:#fff;cursor:pointer}
+  .btn:disabled{opacity:.6;cursor:default}
+  .muted{color:#777;font-size:12px}
+  .results-h{display:flex;justify-content:space-between;align-items:center;margin:8px 0 12px}
+  .cards{display:flex;flex-direction:column;gap:14px}
+  .card{display:flex;gap:12px;background:#fff;border:1px solid #eee;border-radius:10px;padding:12px}
+  .ava{width:44px;height:44px;border-radius:50%;background:#f3f3f3;object-fit:cover;flex:0 0 44px}
+  .main{flex:1}
+  .head{font-size:14px;margin:0 0 6px}
+  .name{font-weight:700}
+  .handle a{color:#666;text-decoration:none}
+  .time{color:#999;margin-left:6px}
+  .text{font-size:15px;line-height:1.35}
+  .text a{color:var(--accent);text-decoration:none}
+  .text a:hover{text-decoration:underline}
+  .media{margin-top:8px}
+  .media img{max-width:100%;height:auto;border-radius:6px;display:block}
+  .counts{margin-top:6px;font-size:12px;color:#666;display:flex;gap:10px;flex-wrap:wrap}
+  .copybox{width:100%;height:200px;padding:10px;border:1px solid #ddd;border-radius:8px;font-family:ui-monospace,Menlo,Consolas,monospace}
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .pill{background:#eef5ff;border:1px solid #c9defc;color:#174ea6;border-radius:999px;padding:4px 8px;font-size:12px}
+  .empty{padding:8px 0;color:#666}
+</style>
+</head>
+<body>
+  <h1>Bluesky Reactions Builder</h1>
+
+  <div class="panel">
+    <div class="row">
+      <div class="col" style="flex:1 1 320px;">
+        <label>Search (e.g., <em>Luka Doncic trade</em>)</label>
+        <input id="q" type="text" placeholder="Player or topic…" />
+      </div>
+      <div class="col">
+        <label>Lookback (hours)</label>
+        <input id="hours" type="number" min="1" max="168" value="6" />
+      </div>
+      <div class="col">
+        <label>Min reposts</label>
+        <input id="minReposts" type="number" min="0" value="10" />
+      </div>
+      <div class="col">
+        <label>Min likes</label>
+        <input id="minLikes" type="number" min="0" value="0" />
+      </div>
+      <div class="col">
+        <label>Limit</label>
+        <input id="limit" type="number" min="1" max="120" value="40" />
+      </div>
+      <div class="col">
+        <label>Sort by</label>
+        <select id="sort">
+          <option value="reposts">Reposts (desc)</option>
+          <option value="likes">Likes (desc)</option>
+          <option value="total">Likes+Reposts (desc)</option>
+          <option value="new">Newest</option>
+        </select>
+      </div>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <div class="checks">
+        <label><input id="includeReplies" type="checkbox" checked /> Include replies</label>
+        <label><input id="includeQuotes"  type="checkbox" checked /> Include quotes</label>
+      </div>
+      <div class="toolbar" style="margin-left:auto">
+        <button id="btnSearch" class="btn">Search</button>
+        <span id="status" class="muted"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="results-h">
+      <div class="toolbar">
+        <span class="pill" id="pillQuery">q: —</span>
+        <span class="pill" id="pillWindow">window: —</span>
+        <span class="pill" id="pillRules">min reposts: —</span>
+        <span class="pill" id="pillCount">0 results</span>
+      </div>
+      <button id="btnEmbed" class="btn" disabled>Build Presto Embed</button>
+    </div>
+    <div id="cards" class="cards"></div>
+    <div id="empty" class="empty" style="display:none">No matching posts found.</div>
+  </div>
+
+  <div class="panel" id="embedPanel" style="display:none">
+    <h3 style="margin:0 0 8px">Paste this in Presto</h3>
+    <textarea id="embedOut" class="copybox" readonly></textarea>
+    <div class="toolbar" style="margin-top:8px">
+      <button id="btnCopy" class="btn">Copy to clipboard</button>
+      <span class="muted">This snippet renders the cards on your article and is indexable enough for SEO (titles/links remain on-page).</span>
+    </div>
+  </div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const cards = $('cards'), statusEl = $('status'), empty = $('empty');
+const pillQ = $('pillQuery'), pillW = $('pillWindow'), pillR = $('pillRules'), pillC = $('pillCount');
+let lastParams = null, lastItems = [];
+
+$('btnSearch').addEventListener('click', run);
+$('btnEmbed').addEventListener('click', buildEmbed);
+$('btnCopy').addEventListener('click', () => {
+  $('embedOut').select(); document.execCommand('copy');
+});
+
+async function run() {
+  const q = $('q').value.trim();
+  const hours = +$('hours').value || 6;
+  const minReposts = +$('minReposts').value || 0;
+  const minLikes = +$('minLikes').value || 0;
+  const limit = +$('limit').value || 40;
+  const sort = $('sort').value;
+  const includeReplies = $('includeReplies').checked ? 1 : 0;
+  const includeQuotes  = $('includeQuotes').checked  ? 1 : 0;
+
+  if (!q) { alert('Type a search.'); return; }
+
+  const url = new URL('/api/reactions', location.origin);
+  url.searchParams.set('q', q);
+  url.searchParams.set('hours', hours);
+  url.searchParams.set('minReposts', minReposts);
+  url.searchParams.set('minLikes', minLikes);
+  url.searchParams.set('limit', limit);
+  url.searchParams.set('sort', sort);
+  url.searchParams.set('includeReplies', includeReplies);
+  url.searchParams.set('includeQuotes', includeQuotes);
+
+  statusEl.textContent = 'Loading…';
+  $('btnSearch').disabled = true; $('btnEmbed').disabled = true;
+  $('embedPanel').style.display = 'none'; $('embedOut').value = '';
+
+  try {
+    const r = await fetch(url, { credentials:'omit' });
+    const data = await r.json();
+    las
