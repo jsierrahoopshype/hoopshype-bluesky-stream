@@ -5,38 +5,36 @@
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>Bluesky Reactions Builder</title>
 <style>
-  :root{--accent:#0a66c2}
-  body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:0;padding:24px;background:#fafafa;color:#111}
-  h1{font-size:22px;margin:0 0 16px}
-  .panel{background:#fff;border:1px solid #e6e6e6;border-radius:8px;padding:16px;margin:0 0 16px}
+  :root{--bg:#f7f7fb;--card:#fff;--line:#e6e6ef;--muted:#666;--text:#111;--accent:#2f6fec}
+  html,body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 system-ui,Segoe UI,Roboto,Arial,sans-serif}
+  h1{font-size:22px;margin:24px}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:10px;margin:0 24px 16px;padding:16px}
   .row{display:flex;gap:12px;flex-wrap:wrap}
   .col{display:flex;flex-direction:column;gap:6px;min-width:160px}
-  label{font-size:12px;color:#555}
-  input[type="text"],input[type="number"],select{padding:8px 10px;border:1px solid #d8d8d8;border-radius:6px;font:inherit;background:#fff}
-  input[type="number"]{width:120px}
-  .checks{display:flex;gap:16px;align-items:center}
-  .btn{appearance:none;border:0;border-radius:8px;padding:10px 14px;font-weight:600;background:var(--accent);color:#fff;cursor:pointer}
-  .btn:disabled{opacity:.6;cursor:default}
-  .muted{color:#777;font-size:12px}
-  .results-h{display:flex;justify-content:space-between;align-items:center;margin:8px 0 12px}
-  .cards{display:flex;flex-direction:column;gap:14px}
-  .card{display:flex;gap:12px;background:#fff;border:1px solid #eee;border-radius:10px;padding:12px}
-  .ava{width:44px;height:44px;border-radius:50%;background:#f3f3f3;object-fit:cover;flex:0 0 44px}
+  label{font-size:12px;color:var(--muted)}
+  input[type="text"],input[type="number"],select{padding:9px 10px;border:1px solid #d8d8e3;border-radius:7px}
+  .checks{display:flex;gap:16px;align-items:center;margin-top:4px}
+  .muted{color:var(--muted);font-size:12px}
+  .results-h{display:flex;justify-content:space-between;align-items:center;margin:8px 24px}
+  .cards{display:flex;flex-direction:column;gap:14px;margin:0 24px 24px}
+  .card{display:flex;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px}
+  .av{width:44px;height:44px;border-radius:50%;background:#f3f3f7;object-fit:cover;flex:0 0 44px}
   .main{flex:1}
   .head{font-size:14px;margin:0 0 6px}
   .name{font-weight:700}
-  .handle a{color:#666;text-decoration:none}
-  .time{color:#999;margin-left:6px}
-  .text{font-size:15px;line-height:1.35}
+  .handle{color:var(--muted);margin-left:6px}
+  .time{color:var(--muted);margin-left:8px}
+  .text{margin:6px 0}
   .text a{color:var(--accent);text-decoration:none}
   .text a:hover{text-decoration:underline}
   .media{margin-top:8px}
-  .media img{max-width:100%;height:auto;border-radius:6px;display:block}
-  .counts{margin-top:6px;font-size:12px;color:#666;display:flex;gap:10px;flex-wrap:wrap}
-  .copybox{width:100%;height:200px;padding:10px;border:1px solid #ddd;border-radius:8px;font-family:ui-monospace,Menlo,Consolas,monospace}
+  .media img{max-width:100%;height:auto;border-radius:8px;display:block}
   .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-  .pill{background:#eef5ff;border:1px solid #c9defc;color:#174ea6;border-radius:999px;padding:4px 8px;font-size:12px}
-  .empty{padding:8px 0;color:#666}
+  .btn{background:var(--accent);color:#fff;border:0;border-radius:8px;padding:10px 14px;cursor:pointer}
+  .btn.muted{background:#ececff;color:#334}
+  .badge{padding:2px 8px;border:1px solid var(--line);border-radius:999px;color:#334;background:#fff;font-size:12px}
+  .copybox{width:100%;padding:10px;border:1px solid #d8d8e3;border-radius:8px;background:#fff;white-space:pre;overflow:auto}
+  .err{color:#b00020;margin:0 24px 16px}
 </style>
 </head>
 <body>
@@ -44,110 +42,200 @@
 
   <div class="panel">
     <div class="row">
-      <div class="col" style="flex:1 1 320px;">
-        <label>Search (e.g., <em>Luka Doncic trade</em>)</label>
-        <input id="q" type="text" placeholder="Player or topic…" />
+      <div class="col" style="min-width:320px">
+        <label>Search (e.g., <i>Luka Doncic trade</i>)</label>
+        <input id="q" type="text" placeholder="NBA"/>
       </div>
       <div class="col">
         <label>Lookback (hours)</label>
-        <input id="hours" type="number" min="1" max="168" value="6" />
+        <input id="hours" type="number" min="1" value="6"/>
       </div>
       <div class="col">
         <label>Min reposts</label>
-        <input id="minReposts" type="number" min="0" value="10" />
+        <input id="minReposts" type="number" min="0" value="10"/>
       </div>
       <div class="col">
         <label>Min likes</label>
-        <input id="minLikes" type="number" min="0" value="0" />
+        <input id="minLikes" type="number" min="0" value="0"/>
       </div>
       <div class="col">
         <label>Limit</label>
-        <input id="limit" type="number" min="1" max="120" value="40" />
+        <input id="limit" type="number" min="1" max="80" value="40"/>
       </div>
-      <div class="col">
+      <div class="col" style="min-width:190px">
         <label>Sort by</label>
         <select id="sort">
           <option value="reposts">Reposts (desc)</option>
           <option value="likes">Likes (desc)</option>
           <option value="total">Likes+Reposts (desc)</option>
-          <option value="new">Newest</option>
+          <option value="time">Newest first</option>
         </select>
       </div>
     </div>
-    <div class="row" style="margin-top:8px">
-      <div class="checks">
-        <label><input id="includeReplies" type="checkbox" checked /> Include replies</label>
-        <label><input id="includeQuotes"  type="checkbox" checked /> Include quotes</label>
-      </div>
-      <div class="toolbar" style="margin-left:auto">
-        <button id="btnSearch" class="btn">Search</button>
-        <span id="status" class="muted"></span>
-      </div>
+
+    <div class="checks">
+      <label><input id="includeReplies" type="checkbox" checked /> Include replies</label>
+      <label><input id="includeQuotes" type="checkbox" checked /> Include quotes</label>
+    </div>
+
+    <div class="toolbar" style="margin-top:12px">
+      <button id="searchBtn" class="btn">Search</button>
+      <button id="buildEmbed" class="btn muted">Build Presto Embed</button>
+      <span id="pill-q"   class="badge"></span>
+      <span id="pill-win" class="badge"></span>
+      <span id="pill-min" class="badge"></span>
+      <span id="pill-count" class="badge"></span>
     </div>
   </div>
 
-  <div class="panel">
-    <div class="results-h">
-      <div class="toolbar">
-        <span class="pill" id="pillQuery">q: —</span>
-        <span class="pill" id="pillWindow">window: —</span>
-        <span class="pill" id="pillRules">min reposts: —</span>
-        <span class="pill" id="pillCount">0 results</span>
-      </div>
-      <button id="btnEmbed" class="btn" disabled>Build Presto Embed</button>
-    </div>
-    <div id="cards" class="cards"></div>
-    <div id="empty" class="empty" style="display:none">No matching posts found.</div>
-  </div>
+  <p id="error" class="err" style="display:none"></p>
+  <div class="results-h"><div></div><div></div></div>
+  <div id="cards" class="cards"></div>
 
-  <div class="panel" id="embedPanel" style="display:none">
-    <h3 style="margin:0 0 8px">Paste this in Presto</h3>
-    <textarea id="embedOut" class="copybox" readonly></textarea>
-    <div class="toolbar" style="margin-top:8px">
-      <button id="btnCopy" class="btn">Copy to clipboard</button>
-      <span class="muted">This snippet renders the cards on your article and is indexable enough for SEO (titles/links remain on-page).</span>
-    </div>
+  <div id="embedWrap" class="panel" style="display:none">
+    <h3 style="margin:0 0 8px">Presto embed (copy/paste)</h3>
+    <textarea id="embedBox" class="copybox" rows="10" readonly></textarea>
   </div>
 
 <script>
-const $ = (id) => document.getElementById(id);
-const cards = $('cards'), statusEl = $('status'), empty = $('empty');
-const pillQ = $('pillQuery'), pillW = $('pillWindow'), pillR = $('pillRules'), pillC = $('pillCount');
-let lastParams = null, lastItems = [];
+(function(){
+  const $ = (id)=>document.getElementById(id);
+  const apiBase = location.origin; // same origin as the function
 
-$('btnSearch').addEventListener('click', run);
-$('btnEmbed').addEventListener('click', buildEmbed);
-$('btnCopy').addEventListener('click', () => {
-  $('embedOut').select(); document.execCommand('copy');
-});
+  const els = {
+    q: $('q'),
+    hours: $('hours'),
+    minReposts: $('minReposts'),
+    minLikes: $('minLikes'),
+    limit: $('limit'),
+    sort: $('sort'),
+    includeReplies: $('includeReplies'),
+    includeQuotes: $('includeQuotes'),
+    searchBtn: $('searchBtn'),
+    cards: $('cards'),
+    err: $('error'),
+    pillQ: $('pill-q'),
+    pillWin: $('pill-win'),
+    pillMin: $('pill-min'),
+    pillCount: $('pill-count'),
+    buildEmbed: $('buildEmbed'),
+    embedWrap: $('embedWrap'),
+    embedBox: $('embedBox'),
+  };
 
-async function run() {
-  const q = $('q').value.trim();
-  const hours = +$('hours').value || 6;
-  const minReposts = +$('minReposts').value || 0;
-  const minLikes = +$('minLikes').value || 0;
-  const limit = +$('limit').value || 40;
-  const sort = $('sort').value;
-  const includeReplies = $('includeReplies').checked ? 1 : 0;
-  const includeQuotes  = $('includeQuotes').checked  ? 1 : 0;
+  function htmlEscape(s=''){
+    return String(s).replace(/[&<>"']/g,c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function linkify(html=''){
+    return html
+      .replace(/(https?:\/\/[^\s<]+)/gmi,m=>`<a href="${htmlEscape(m)}" target="_blank" rel="noopener nofollow">${htmlEscape(m)}</a>`)
+      .replace(/\b((?:www\.)?(?:[a-z0-9-]+\.)+(?:com|co|io|net|org|news|tv|fm|gg|ai|link|app|be|ly|to|media|social|dev|us|uk|ca|de|fr|es|it|nl|se|no|dk|pl|cz|sk|pt|ie))(\/[^\s<]*)?/gmi,
+        (m,host,path='')=>`<a href="https://${htmlEscape(host+path)}" target="_blank" rel="noopener nofollow">${htmlEscape(m)}</a>`);
+  }
 
-  if (!q) { alert('Type a search.'); return; }
+  function render(items){
+    els.cards.innerHTML = items.map(p=>{
+      const av = p.authorAvatar || '';
+      const name = htmlEscape(p.authorDisplay||'');
+      const handle = htmlEscape(p.authorHandle||'');
+      const time = htmlEscape(p.tsLocal||'');
+      const postUrl = p.url || '#';
+      const text = linkify(p.html||'');
+      const media = p.mediaUrl ? `<div class="media"><img src="${p.mediaUrl}" alt="" loading="lazy"></div>` : '';
+      return `
+      <article class="card">
+        <img class="av" src="${av}" alt="" />
+        <div class="main">
+          <p class="head"><span class="name">${name}</span>
+            <span class="handle">@${handle}</span>
+            <span class="time">• ${time}</span>
+          </p>
+          <div class="text">${text}</div>
+          ${media}
+          <p class="muted"><a href="${postUrl}" target="_blank" rel="noopener">Open on Bluesky</a></p>
+        </div>
+      </article>`;
+    }).join('');
+  }
 
-  const url = new URL('/api/reactions', location.origin);
-  url.searchParams.set('q', q);
-  url.searchParams.set('hours', hours);
-  url.searchParams.set('minReposts', minReposts);
-  url.searchParams.set('minLikes', minLikes);
-  url.searchParams.set('limit', limit);
-  url.searchParams.set('sort', sort);
-  url.searchParams.set('includeReplies', includeReplies);
-  url.searchParams.set('includeQuotes', includeQuotes);
+  async function runSearch(){
+    els.err.style.display = 'none';
+    els.embedWrap.style.display = 'none';
+    els.cards.innerHTML = '';
+    els.pillCount.textContent = '…';
 
-  statusEl.textContent = 'Loading…';
-  $('btnSearch').disabled = true; $('btnEmbed').disabled = true;
-  $('embedPanel').style.display = 'none'; $('embedOut').value = '';
+    const q = els.q.value.trim();
+    const params = new URLSearchParams({
+      q,
+      hours: String(Math.max(1, +els.hours.value||6)),
+      minReposts: String(Math.max(0, +els.minReposts.value||0)),
+      minLikes: String(Math.max(0, +els.minLikes.value||0)),
+      limit: String(Math.min(80, Math.max(1, +els.limit.value||40))),
+      sort: els.sort.value,
+      includeReplies: els.includeReplies.checked ? '1':'0',
+      includeQuotes:  els.includeQuotes.checked ? '1':'0',
+    });
 
-  try {
-    const r = await fetch(url, { credentials:'omit' });
-    const data = await r.json();
-    las
+    els.pillQ.textContent   = 'q: ' + (q||'—');
+    els.pillWin.textContent = 'window: ' + params.get('hours') + 'h';
+    els.pillMin.textContent = 'min reposts: ' + params.get('minReposts');
+
+    try{
+      const r = await fetch(`${apiBase}/api/reactions?`+params.toString(), {credentials:'omit'});
+      const data = await r.json();
+      if(!r.ok || data.error){
+        throw new Error(data.error || 'Request failed');
+      }
+      const items = Array.isArray(data.items) ? data.items : [];
+      els.pillCount.textContent = `${items.length} results`;
+      render(items);
+    }catch(err){
+      els.cards.innerHTML = '';
+      els.err.textContent = 'Error: ' + err.message;
+      els.err.style.display = 'block';
+      els.pillCount.textContent = '0 results';
+    }
+  }
+
+  function buildPrestoEmbed(){
+    const q = els.q.value.trim();
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York';
+    const lim = Math.min(80, Math.max(1, +els.limit.value||40));
+
+    const code = `<!-- Bluesky Reactions Embed -->
+<div id="bsky-stream" data-title="Latest Bluesky reactions"
+     data-q="${htmlEscape(encodeURIComponent(q))}"
+     data-tz="${htmlEscape(tz)}"
+     data-limit="${lim}" style="--bsky-link-color:#0a66c2">Loading…</div>
+<script>
+  (function(){
+    const el=document.getElementById('bsky-stream');
+    const q=decodeURIComponent(el.dataset.q||'');
+    const tz=el.dataset.tz||'America/New_York';
+    const lim=el.dataset.limit||'40';
+    const api=location.origin+'/api/stream?q='+encodeURIComponent(q)+'&tz='+encodeURIComponent(tz)+'&limitReporters='+encodeURIComponent(lim);
+    fetch(api).then(r=>r.json()).then(data=>{
+      const items=Array.isArray(data.items)?data.items:[];
+      el.innerHTML=items.map(p=>{
+        const t=(p.html||'').replace(/(https?:\\/\\/[^\\s<]+)/g,'<a href="$1" target="_blank" rel="noopener nofollow">$1</a>');
+        const m=p.mediaUrl?'<div class="bsky-media"><img src="'+p.mediaUrl+'" loading="lazy"></div>':'';
+        return '<article class="bsky-card"><img class="bsky-avatar" src="'+(p.authorAvatar||'')+'"/><div class="bsky-main"><p class="bsky-head"><strong>'+ (p.authorDisplay||'') +'</strong> <span class="bsky-handle">@'+(p.authorHandle||'')+'</span> • <span>'+ (p.tsLocal||'') +'</span></p><div class="bsky-text">'+t+'</div>'+m+'<div class="bsky-footer"><a href="'+(p.url||'#')+'" target="_blank">Open on Bluesky</a></div></div></article>';
+      }).join('');
+    }).catch(()=>{el.textContent='Stream unavailable.'});
+  })();
+</script>`;
+    els.embedBox.value = code;
+    els.embedWrap.style.display = 'block';
+    els.embedBox.focus(); els.embedBox.select();
+  }
+
+  els.searchBtn.addEventListener('click', runSearch);
+  els.buildEmbed.addEventListener('click', buildPrestoEmbed);
+
+  // sensible default for first load
+  els.q.value = 'NBA';
+  runSearch();
+})();
+</script>
+</body>
+</html>
