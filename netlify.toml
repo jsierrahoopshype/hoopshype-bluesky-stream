@@ -1,12 +1,21 @@
+# netlify.toml  (root of the repo)
+
 [build]
   functions = "netlify/functions"
-  publish = "public"
+  publish   = "public"
 
 [functions]
   node_bundler = "esbuild"
-  included_files = ["reporters.csv"]
+  included_files = []
 
+# Existing stream endpoint
 [[redirects]]
-  from = "/api/stream"
-  to = "/.netlify/functions/stream"
+  from   = "/api/stream"
+  to     = "/.netlify/functions/stream"
+  status = 200
+
+# NEW: reactions endpoint used by /reactions.html
+[[redirects]]
+  from   = "/api/reactions"
+  to     = "/.netlify/functions/reactions"
   status = 200
