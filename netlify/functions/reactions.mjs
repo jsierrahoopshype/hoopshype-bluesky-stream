@@ -1,156 +1,160 @@
 // netlify/functions/reactions.mjs
-// Bluesky "Reactions" — search public posts in last X hours, filter by reposts/likes, return sorted list.
-// No auth, uses the public Bluesky API. Adds CORS + UA + edge cache.
-//
-// Query params:
-// q=(string)|hours=6|minReposts=5|minLikes=0|limit=40|sort=reposts|includeReplies=0|includeQuotes=0
-// tz=America/New_York  (for local timestamps)
-// nocache=1 to bypass cache once
-//
-// Example:
-// /api/reactions?q=LeBron%20James&hours=12&minReposts=10&limit=50&sort=reposts
+// Bluesky Reactions API (no auth; uses public search endpoint)
+// Query: q, hours, minReposts, minLikes, limit, includeReplies, includeQuotes, sort
+// Example: /api/reactions?q=NBA&hours=6&minReposts=5&limit=40
 
-const CORS = {
-  'access-control-allow-origin': '*',
-  'access-control-allow-methods': 'GET,OPTIONS',
-  'access-control-allow-headers': 'Content-Type',
-};
-
-const OUTBOUND_HEADERS = {
-  'User-Agent': 'HoopsHype-Reactions/1.0 (+https://hoopshype.com)'
-};
-
-const REQ_TIMEOUT_MS = 1500;
-const PAGE_LIMIT = 50; // per API page
-
-export default async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers: CORS });
-  }
-
+export default async (req, context) => {
   try {
     const url = new URL(req.url);
-    const q = (url.searchParams.get('q') || '').trim();
+    const q = url.searchParams.get('q') || '';
     const hours = Math.max(1, Number(url.searchParams.get('hours') || 6));
-    const minReposts = Math.max(0, Number(url.searchParams.get('minReposts') || 5));
+    const minReposts = Math.max(0, Number(url.searchParams.get('minReposts') || 0));
     const minLikes = Math.max(0, Number(url.searchParams.get('minLikes') || 0));
-    const limit = Math.max(1, Math.min(200, Number(url.searchParams.get('limit') || 40)));
-    const sort = (url.searchParams.get('sort') || 'reposts').toLowerCase(); // 'reposts'|'likes'|'total'
-    const tz = url.searchParams.get('tz') || 'America/New_York';
-    const includeReplies = url.searchParams.get('includeReplies') === '1';
-    const includeQuotes  = url.searchParams.get('includeQuotes')  === '1';
-    const NO_CACHE = url.searchParams.get('nocache') === '1';
+    const limit = Math.min(200, Math.max(1, Number(url.searchParams.get('limit') || 40)));
+    const includeReplies = url.searchParams.get('includeReplies') === 'true';
+    const includeQuotes = url.searchParams.get('includeQuotes') === 'true';
+    const sort = (url.searchParams.get('sort') || 'reposts').toLowerCase(); // 'reposts' | 'likes' | 'latest' | 'total'
 
-    if (!q) {
-      return json({ error: 'missing q' }, { status: 400, noCache: true });
-    }
+    if (!q.trim()) return json({ items: [], scanned: 0 }, { status: 200 });
 
-    const sinceMs = Date.now() - hours * 3600 * 1000;
-    const out = [];
+    const UA = 'HoopsHype-Reactions/1.0 (+https://hoopshype.com)';
+    // Public read endpoint
+    const SEARCH = 'https://api.bsky.app/xrpc/app.bsky.feed.searchPosts';
 
-    // We page through search results until we go past the time window or hit limit*2
+    // time window
+    const now = Date.now();
+    const cutoff = now - hours * 3600 * 1000;
+
     let cursor = '';
-    let safety = 0;
+    let collected = [];
+    let scanned = 0;
 
-    while (safety++ < 20 && out.length < limit * 2) {
-      const endpoint = new URL('https://public.api.bsky.app/xrpc/app.bsky.feed.searchPosts');
-      endpoint.searchParams.set('q', q);
-      endpoint.searchParams.set('limit', String(PAGE_LIMIT));
-      if (cursor) endpoint.searchParams.set('cursor', cursor);
+    // We’ll pull pages until:
+    // - we have more than we need (we’ll trim later) OR
+    // - posts are all older than the cutoff OR
+    // - the API stops giving cursors
+    while (true) {
+      const params = new URLSearchParams({
+        q,
+        limit: '100',
+        sort: 'latest', // get freshest first; we sort after
+      });
+      if (cursor) params.set('cursor', cursor);
 
-      const page = await fetchJSON(endpoint.toString(), REQ_TIMEOUT_MS);
-      const posts = page?.posts || [];
-      if (!posts.length) break;
+      const r = await fetch(`${SEARCH}?${params}`, {
+        headers: { 'User-Agent': UA },
+      });
 
+      if (!r.ok) {
+        // Return the server’s error body to help debug
+        let errText = '';
+        try { errText = await r.text(); } catch {}
+        return json(
+          { error: `search ${r.status}`, details: errText.slice(0, 500) },
+          { status: 502, noCache: true }
+        );
+      }
+
+      const page = await r.json();
+      const posts = Array.isArray(page.posts) ? page.posts : [];
+      scanned += posts.length;
+
+      // Map/filter to our shape
       for (const p of posts) {
-        const created =
-          Date.parse(p.record?.createdAt || p.indexedAt || '') ||
-          Date.parse(p.indexedAt || '');
-        if (!created) continue;
+        const rec = p.record || {};
+        const text = typeof rec.text === 'string' ? rec.text : '';
+        const createdAt = rec.createdAt ? Date.parse(rec.createdAt) : 0;
+        if (!createdAt || createdAt < cutoff) continue; // outside window
 
-        // stop if results are older than window (API is roughly newest-first)
-        if (created < sinceMs) { safety = 99; break; }
+        const isReply = !!rec.reply;
+        const isQuote = !!rec.embed?.record;
+        if (!includeReplies && isReply) continue;
+        if (!includeQuotes && isQuote) continue;
 
-        const isReply = !!p.record?.reply;
-        const isQuote = !!(p.embed?.record || p.embed?.$type === 'app.bsky.embed.record');
-        if (isReply && !includeReplies) continue;
-        if (isQuote && !includeQuotes) continue;
+        const likeCount = p.likeCount || 0;
+        const repostCount = p.repostCount || 0;
+        if (likeCount < minLikes) continue;
+        if (repostCount < minReposts) continue;
 
-        const reposts = Number(p.repostCount || 0);
-        const likes   = Number(p.likeCount || 0);
-        if (reposts < minReposts) continue;
-        if (likes   < minLikes) continue;
+        const author = p.author || {};
+        const authorHandle = author.handle || '';
+        const authorDisplay = author.displayName || authorHandle || '';
+        const authorAvatar = author.avatar || '';
 
-        const id = (p.uri || '').split('/').pop();
-        const urlPost = `https://bsky.app/profile/${p.author?.did}/post/${id}`;
-        out.push({
-          ts: created,
-          tsLocal: new Intl.DateTimeFormat('en-US', {
-            timeStyle: 'short', dateStyle: 'medium', timeZone: tz
-          }).format(new Date(created)),
-          authorDisplay: p.author?.displayName || p.author?.handle || 'User',
-          authorHandle:  p.author?.handle || '',
-          authorAvatar:  p.author?.avatar || '',
-          textHtml: escapeHtml(p.record?.text || '').replace(/\n/g,'<br>'),
-          mediaUrl: firstImage(p),
-          url: urlPost,
-          repostCount: reposts,
-          likeCount: likes,
-          replyCount: Number(p.replyCount || 0),
-          quote: isQuote ? 1 : 0,
-          reply: isReply ? 1 : 0
+        // Try to pull first embedded image (if any)
+        const mediaUrl = firstImage(p);
+
+        // Build a public post URL
+        const postUrl = author.handle
+          ? `https://bsky.app/profile/${author.handle}/post/${p.uri?.split('/').pop() || ''}`
+          : `https://bsky.app/`;
+
+        collected.push({
+          ts: createdAt,
+          tsISO: new Date(createdAt).toISOString(),
+          authorDisplay,
+          authorHandle,
+          authorAvatar,
+          text,
+          likeCount,
+          repostCount,
+          isReply,
+          isQuote,
+          url: postUrl,
+          mediaUrl,
         });
       }
 
-      cursor = page?.cursor || '';
+      // stop conditions
+      if (collected.length >= limit * 2) break; // collected enough to sort/trim
+      cursor = page.cursor || '';
       if (!cursor) break;
     }
 
     // sort
-    out.sort((a, b) => {
-      if (sort === 'likes')  return b.likeCount - a.likeCount || b.ts - a.ts;
-      if (sort === 'total')  return (b.likeCount + b.repostCount) - (a.likeCount + a.repostCount) || b.ts - a.ts;
+    collected.sort((a, b) => {
+      if (sort === 'likes') return b.likeCount - a.likeCount || b.ts - a.ts;
+      if (sort === 'latest') return b.ts - a.ts;
+      if (sort === 'total') return (b.likeCount + b.repostCount) - (a.likeCount + a.repostCount) || b.ts - a.ts;
+      // default: reposts
       return b.repostCount - a.repostCount || b.ts - a.ts;
     });
 
-    const items = out.slice(0, limit);
-    return json({ items, q, hours, minReposts, minLikes, sort }, { noCache: NO_CACHE });
+    // trim
+    collected = collected.slice(0, limit);
 
+    return json(
+      { items: collected, scanned, windowHours: hours, q, sort },
+      { status: 200, noCache: false }
+    );
   } catch (e) {
-    console.error('[reactions] err', e);
-    return json({ error: e.message || 'error' }, { status: 500, noCache: true });
+    return json({ error: e?.message || String(e) }, { status: 500, noCache: true });
   }
 };
 
 // ---------- helpers ----------
-function firstImage(p) {
-  return p?.embed?.images?.[0]?.fullsize ||
-         p?.record?.embed?.images?.[0]?.fullsize || null;
+function firstImage(post) {
+  const emb = post?.embed;
+  if (!emb) return null;
+  // app.bsky.embed.images
+  const imgs = emb?.images;
+  if (Array.isArray(imgs) && imgs[0]?.thumb) return imgs[0].thumb;
+  // quote embeds may have images under embed.record.embed.images
+  const recImg = emb?.record?.embed?.images;
+  if (Array.isArray(recImg) && recImg[0]?.thumb) return recImg[0].thumb;
+  return null;
 }
-function escapeHtml(s){return String(s||'').replace(/[&<>"]/g,c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 
-function json(obj, opts={}) {
+function json(obj, opts = {}) {
   const status = opts.status || 200;
-  const browserTTL = opts.noCache ? 0 : 60;
-  const cdnTTL     = opts.noCache ? 0 : 180; // 3 min
-  const swr        = opts.noCache ? 0 : 120;
+  const browserTTL = opts.noCache ? 0 : 300; // 5m
+  const cdnTTL = opts.noCache ? 0 : 120;     // 2m
+  const swr = opts.noCache ? 0 : 120;        // 2m
   return new Response(JSON.stringify(obj), {
     status,
     headers: {
-      ...CORS,
-      'content-type': 'application/json',
-      'cache-control': browserTTL ? `public, max-age=${browserTTL}, s-maxage=${cdnTTL}, stale-while-revalidate=${swr}` : 'no-store',
-      'Netlify-CDN-Cache-Control': cdnTTL ? `public, s-maxage=${cdnTTL}` : 'no-store'
-    }
+      'content-type': 'application/json; charset=utf-8',
+      'cache-control': `public, max-age=${browserTTL}, s-maxage=${cdnTTL}, stale-while-revalidate=${swr}`,
+    },
   });
-}
-
-async function fetchJSON(u, timeoutMs) {
-  const ctl = new AbortController();
-  const to = setTimeout(() => ctl.abort(new Error('timeout')), timeoutMs || 0);
-  try {
-    const r = await fetch(u, { signal: ctl.signal, headers: OUTBOUND_HEADERS });
-    if (!r.ok) throw new Error(`fetch ${r.status}`);
-    return await r.json();
-  } finally { clearTimeout(to); }
 }
