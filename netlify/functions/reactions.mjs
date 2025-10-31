@@ -1,169 +1,245 @@
 // netlify/functions/reactions.mjs
-import fetch from "node-fetch";
+// Node 18+ (global fetch). No node-fetch needed.
 
-const NO_CACHE = 180; // seconds
-const AGENT = "HoopsHype-Reactions-Tool/1.0 (+https://www.hoopshype.com)";
+export const config = { path: "/api/reactions" };
 
-// --- helpers ---------------------------------------------------------
-const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+/* -----------------------------
+   Helpers
+----------------------------- */
+const BLUESKY_API = "https://bsky.social";
+const BSKY_APP_HANDLE = process.env.BSKY_HANDLE;       // e.g. "hoopshypeofficial.bsky.social"
+const BSKY_APP_PASSWORD = process.env.BSKY_APP_PASSWORD;
 
-async function loadReportersCSV() {
-  // Try env first, otherwise fall back to static file in repo root
-  const url =
-    process.env.REPORTERS_CSV_URL ||
-    `${process.env.URL || "https://unique-twilight-d4fa41.netlify.app"}/reporters.csv`;
+/** Small sleep to be gentle with XRPC */
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/** Convert a post record to our lean JSON for the UI/embed */
+function mapPost(p, tz = "UTC") {
+  const { author, uri, cid, likeCount = 0, repostCount = 0, record, embed, indexedAt } = p;
+
+  // author bits
+  const authorDisplay = author?.displayName || author?.handle || "";
+  const authorHandle = author?.handle || "";
+  const authorAvatar = author?.avatar || "";
+
+  // post URL: bsky.app/profile/<did>/post/<rkey>
+  const did = author?.did || "";
+  const rkey = uri?.split("/").pop() || "";
+  const url = did && rkey ? `https://bsky.app/profile/${did}/post/${rkey}` : "";
+
+  // media (first image if any)
+  let mediaUrl = "";
+  if (embed?.images?.length) {
+    mediaUrl = embed.images[0]?.fullsize || embed.images[0]?.thumb || "";
+  }
+
+  const text = record?.text || "";
+  const ts = indexedAt ? new Date(indexedAt).toISOString() : new Date().toISOString();
+
+  // very light HTML: linkify http(s) and www. domains, preserve line breaks
+  const linkified = linkify(text);
+
+  // reply / quote flags
+  const isReply = !!record?.reply;
+  const isQuote = !!embed?.record;
+
+  // pretty local time string
+  const tsLocal = toLocal(ts, tz);
+
+  return {
+    ts,
+    tsLocal,
+    authorDisplay,
+    authorHandle,
+    authorAvatar,
+    text,
+    html: linkified,
+    mediaUrl,
+    url,
+    likeCount,
+    repostCount,
+    isReply,
+    isQuote
+  };
+}
+
+function linkify(s = "") {
+  if (!s) return "";
+  let out = s.replace(/(https?:\/\/[^\s]+)/gim, m => `<a href="${m}" target="_blank" rel="noopener nofollow">${m}</a>`);
+  out = out.replace(/\b((?:www\.)?(?:[a-z0-9-]+\.)+(?:com|co|io|net|org|news|tv|fm|gg|ai|link|app|be|ly|to|media|social|dev|us|uk|ca|de|fr|es|it|nl|se|no|dk|pl|cz|sk|pt|ie))(\/[^\s]*)?/gim,
+    (m, host, path = "") => `<a href="https://${host}${path}" target="_blank" rel="noopener nofollow">${m}</a>`
+  );
+  out = out.replace(/\n/g, "<br>");
+  return out;
+}
+
+function toLocal(iso, tz = "UTC") {
   try {
-    const r = await fetch(url, { headers: { "User-Agent": AGENT } });
-    if (!r.ok) throw new Error("reporters csv not ok");
-    const txt = await r.text();
-    const lines = txt.trim().split(/\r?\n/);
-    // Accept handle with or without leading @; we store normalized handle.
-    const set = new Set(
-      lines
-        .map(l => l.trim())
-        .filter(Boolean)
-        .map(h => h.replace(/^@/, "").toLowerCase())
-    );
-    return set;
+    const d = new Date(iso);
+    return d.toLocaleString(undefined, { timeZone: tz, hour12: true });
+  } catch {
+    return iso;
+  }
+}
+
+/** read reporters.csv from the site root and return a Set of priority handles (lowercased) */
+async function getPriorityHandles(siteUrl) {
+  try {
+    const url = `${siteUrl.replace(/\/$/, "")}/reporters.csv`;
+    const r = await fetch(url, { headers: { "accept": "text/plain" } });
+    if (!r.ok) return new Set();
+    const csv = await r.text();
+    const lines = csv.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+    // accept handles with or without leading @
+    return new Set(lines.map(x => x.replace(/^@/, "").toLowerCase()));
   } catch {
     return new Set();
   }
 }
 
-function firstImage(p) {
-  const imgs =
-    p?.embed?.images?.[0]?.fullsize ||
-    p?.embed?.images?.[0]?.thumb ||
-    p?.embed?.image?.fullsize ||
-    p?.embed?.image?.thumb ||
-    "";
-  return imgs || "";
-}
-
-function escapeHTML(s = "") {
-  return String(s)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function engagementScore(x) {
-  return (x.likeCount || 0) + (x.repostCount || 0);
-}
-
-function json(body, { status = 200, noCache = false } = {}) {
-  const ttl = noCache ? 0 : NO_CACHE;
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      "cache-control": `public, max-age=${ttl}`,
-      "access-control-allow-origin": "*"
-    }
+/* -----------------------------
+   Bluesky session & calls
+----------------------------- */
+async function createSession() {
+  if (!BSKY_APP_HANDLE || !BSKY_APP_PASSWORD) {
+    throw new Error("Missing BSKY_HANDLE or BSKY_APP_PASSWORD env.");
+  }
+  const r = await fetch(`${BLUESKY_API}/xrpc/com.atproto.server.createSession`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ identifier: BSKY_APP_HANDLE, password: BSKY_APP_PASSWORD })
   });
+  if (!r.ok) {
+    const e = await r.text();
+    throw new Error(`createSession failed: ${r.status} ${e}`);
+  }
+  const j = await r.json();
+  return j.accessJwt; // use access token for subsequent calls
 }
 
-// --- main ------------------------------------------------------------
-export default async (req) => {
+async function searchPosts({ token, q, limit = 50, cursor }) {
+  const params = new URLSearchParams({ q, limit: String(limit) });
+  if (cursor) params.set("cursor", cursor);
+  const r = await fetch(`${BLUESKY_API}/xrpc/app.bsky.feed.searchPosts?${params.toString()}`, {
+    headers: { authorization: `Bearer ${token}` }
+  });
+  if (!r.ok) {
+    const e = await r.text();
+    throw new Error(`searchPosts failed: ${r.status} ${e}`);
+  }
+  return r.json(); // { posts, cursor }
+}
+
+/* -----------------------------
+   Netlify Function handler
+----------------------------- */
+export async function handler(event) {
   try {
-    const url = new URL(req.url);
-    const q = url.searchParams.get("q") || "";
-    const hours = Math.max(1, Math.min(48, Number(url.searchParams.get("hours") || 6)));
-    const minReposts = Math.max(0, Number(url.searchParams.get("minReposts") || 0));
-    const minLikes = Math.max(0, Number(url.searchParams.get("minLikes") || 0));
+    const url = new URL(event.rawUrl);
+    const siteUrl =
+      process.env.URL ||
+      process.env.DEPLOY_PRIME_URL ||
+      `${url.protocol}//${url.host}`;
+
+    // Query params
+    const q = (url.searchParams.get("q") || "").trim() || "NBA";
+    const hours = Number(url.searchParams.get("hours") || 6);
+    const minReposts = Number(url.searchParams.get("minReposts") || 0);
+    const minLikes = Number(url.searchParams.get("minLikes") || 0);
+    const limit = Math.min(Number(url.searchParams.get("limit") || 40), 100);
     const includeReplies = url.searchParams.get("includeReplies") === "1";
     const includeQuotes = url.searchParams.get("includeQuotes") === "1";
-    const sort = url.searchParams.get("sort") || "reposts";
-    const limit = Math.max(1, Math.min(100, Number(url.searchParams.get("limit") || 40)));
-    const preferReporters = url.searchParams.get("preferReporters") !== "0"; // default on
+    const sort = (url.searchParams.get("sort") || "reposts").toLowerCase(); // "reposts" | "likes" | "time"
+    const tz = url.searchParams.get("tz") || "UTC";
+    const noCache = url.searchParams.get("nocache") === "1";
 
-    const reportersSet = preferReporters ? await loadReportersCSV() : new Set();
+    const since = Date.now() - hours * 60 * 60 * 1000;
 
-    // Bluesky search
-    const endpoint = "https://public.api.bsky.app/xrpc/app.bsky.feed.searchPosts";
-    const since = Date.now() - hours * 3600 * 1000;
-    let cursor = "";
-    let out = [];
+    // Priority handles (from reporters.csv at repo root)
+    const priority = await getPriorityHandles(siteUrl);
 
-    while (out.length < limit) {
-      const u = new URL(endpoint);
-      u.searchParams.set("q", q || "nba");
-      u.searchParams.set("sort", "latest");
-      u.searchParams.set("limit", "50");
-      if (cursor) u.searchParams.set("cursor", cursor);
+    // Bluesky session
+    const token = await createSession();
 
-      const r = await fetch(u, {
-        headers: { "User-Agent": AGENT, accept: "application/json" },
-      });
-      if (!r.ok) break;
+    // Gather posts
+    let items = [];
+    let cursor = undefined;
+    const pageLimit = 50; // per request to XRPC
+    // Fetch until either we collected at least 3×limit raw (to allow filtering), or we fall out of time window, or cursor ends
+    for (let page = 0; page < 12; page++) {
+      const data = await searchPosts({ token, q, limit: pageLimit, cursor });
+      const posts = Array.isArray(data?.posts) ? data.posts : [];
+      if (!posts.length) break;
 
-      const data = await r.json();
-      const feed = data?.posts || data?.feed || [];
-      for (const p of feed) {
-        const rec = p?.record || {};
-        const ts = new Date(rec?.createdAt || p?.indexedAt || p?.createdAt || 0).getTime();
-        if (!ts || ts < since) continue;
+      // Map and filter
+      for (const p of posts) {
+        const ts = Date.parse(p.indexedAt || p.createdAt || Date.now());
+        if (Number.isFinite(ts) && ts < since) {
+          // This post is outside time window; we won't break immediately because search results can be mixed,
+          // but we won't keep it.
+        }
+        const mapped = mapPost(p, tz);
 
-        const isReply = !!p?.reply;
-        const isQuote = !!p?.embedding?.detached || !!p?.embed?.quotedPost || p?.reason?.type === "app.bsky.feed.defs#reasonQuote";
-        if (!includeReplies && isReply) continue;
-        if (!includeQuotes && isQuote) continue;
+        // basic filters
+        if (!includeReplies && mapped.isReply) continue;
+        if (!includeQuotes && mapped.isQuote) continue;
+        if (mapped.repostCount < minReposts) continue;
+        if (mapped.likeCount < minLikes) continue;
+        if (Date.parse(mapped.ts) < since) continue;
 
-        const authorHandle = (p?.author?.handle || "").toLowerCase();
-        const item = {
-          ts,
-          tsLocal: new Date(ts).toLocaleString("en-US", { hour12: false }),
-          authorDisplay: p?.author?.displayName || p?.author?.handle || "",
-          authorHandle,
-          authorAvatar: p?.author?.avatar || "",
-          text: rec?.text || p?.text || "",
-          html: escapeHTML(rec?.text || p?.text || "").replace(/\n/g, "<br>"),
-          mediaUrl: firstImage(p),
-          url:
-            p?.uri
-              ? `https://bsky.app/profile/${p.author?.did || ""}/post/${p.uri.split("/").pop()}`
-              : "",
-          likeCount: p?.likeCount || 0,
-          repostCount: p?.repostCount || 0,
-          isReply: isReply ? 1 : 0,
-          isQuote: isQuote ? 1 : 0,
-        };
-
-        // priority?
-        item.priority = reportersSet.has(authorHandle) ? 1 : 0;
-
-        // filters: NOTE reshares = reposts + quotes (so quotes count as a kind of reshare)
-        const reshares = (item.repostCount || 0) + (item.isQuote ? 1 : 0);
-        if (minReposts && reshares < minReposts) continue;
-        if (minLikes && item.likeCount < minLikes) continue;
-
-        out.push(item);
-        if (out.length >= limit) break;
+        items.push(mapped);
       }
 
-      cursor = data?.cursor || "";
+      cursor = data?.cursor;
       if (!cursor) break;
-      // polite
-      await sleep(80);
+      if (items.length >= limit * 3) break; // enough to sort & trim
+      await sleep(120); // be nice
     }
 
-    // sort: priority first, then selected mode
-    out.sort((a, b) => {
-      if (b.priority !== a.priority) return b.priority - a.priority;
-      if (sort === "likes") return (b.likeCount || 0) - (a.likeCount || 0) || b.ts - a.ts;
-      if (sort === "engagement")
-        return (engagementScore(b) - engagementScore(a)) || b.ts - a.ts;
+    // Sort
+    items.sort((a, b) => {
+      if (sort === "likes") return b.likeCount - a.likeCount || Date.parse(b.ts) - Date.parse(a.ts);
+      if (sort === "time") return Date.parse(b.ts) - Date.parse(a.ts);
       // default: reposts
-      return (b.repostCount || 0) - (a.repostCount || 0) || b.ts - a.ts;
+      return b.repostCount - a.repostCount || b.likeCount - a.likeCount || Date.parse(b.ts) - Date.parse(a.ts);
     });
 
-    // trim
-    const items = out.slice(0, limit);
-    return json({ items }, { noCache: url.searchParams.get("nocache") === "1" });
+    // Priority bump (stable): move items whose authorHandle is in reporters.csv to the front
+    if (priority.size) {
+      const pri = [];
+      const rest = [];
+      for (const it of items) {
+        const h = it.authorHandle?.toLowerCase() || "";
+        (priority.has(h) ? pri : rest).push(it);
+      }
+      items = pri.concat(rest);
+    }
 
-  } catch (e) {
-    return json({ error: e?.message || String(e) }, { status: 500, noCache: true });
+    // Trim
+    items = items.slice(0, limit);
+
+    // Response (cache unless nocache=1)
+    const headers = {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": noCache
+        ? "no-store"
+        : "public, s-maxage=180, max-age=60, stale-while-revalidate=60"
+    };
+
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({ items })
+    };
+  } catch (err) {
+    // Return a JSON error (and mark no-cache so the UI can retry quickly)
+    return {
+      statusCode: 500,
+      headers: {
+        "content-type": "application/json; charset=utf-8",
+        "cache-control": "no-store"
+      },
+      body: JSON.stringify({ error: String(err?.message || err) })
+    };
   }
 }
