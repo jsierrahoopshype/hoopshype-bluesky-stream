@@ -2,37 +2,48 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Bluesky Reactions Builder</title>
   <style>
-    :root{--accent:#0a66c2}
+    :root { --accent:#0a66c2; }
     body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:0;background:#fafafa;color:#111}
-    .wrap{max-width:1100px;margin:0 auto;padding:24px}
-    h1{font-size:22px;margin:0 0 20px}
-    .panel{background:#fff;border:1px solid #e6e6e6;border-radius:10px;padding:16px;margin:0 0 16px}
+    .wrap{max-width:1100px;margin:24px auto;padding:0 16px}
+    h1{font-size:22px;margin:0 0 16px}
+    .panel{background:#fff;border:1px solid #e6e6e6;border-radius:10px;padding:16px}
     .row{display:flex;gap:12px;flex-wrap:wrap}
-    .col{display:flex;flex-direction:column;gap:6px;min-width:220px;flex:1}
+    .col{display:flex;flex-direction:column;gap:6px;min-width:180px;flex:1}
     label{font-size:12px;color:#555}
     input[type="text"],input[type="number"],select{
-      padding:8px 10px;border:1px solid #d8d8d8;border-radius:6px;font:inherit
+      padding:10px 12px;border:1px solid #d8d8d8;border-radius:6px;font:inherit;background:#fff
     }
-    .checks{display:flex;gap:16px;align-items:center;margin-top:4px}
-    .btn{appearance:none;border:none;border-radius:8px;padding:9px 14px;font-weight:600;background:var(--accent);color:#fff;cursor:pointer}
-    .btn:disabled{opacity:.5;cursor:default}
+    .checks{display:flex;gap:16px;align-items:center}
+    .btn{appearance:none;border:1px solid #d0d0d0;border-radius:8px;padding:10px 14px;background:#fff;cursor:pointer}
+    .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+    .btn:disabled{opacity:.6;cursor:not-allowed}
     .muted{color:#777;font-size:12px}
     .results-h{display:flex;justify-content:space-between;align-items:center;margin:8px 0 12px}
-    .cards{display:flex;flex-direction:column;gap:12px}
-    .card{background:#fff;border:1px solid #eee;border-radius:10px;padding:12px}
-    .name{font-weight:700}
-    .handle{color:#666;text-decoration:none;margin-left:6px}
+    .cards{display:flex;flex-direction:column;gap:14px}
+    .card{display:flex;gap:12px;background:#fff;border:1px solid #eee;border-radius:10px;padding:14px}
+    .avatar{width:44px;height:44px;border-radius:50%;object-fit:cover;background:#f3f3f3;flex:0 0 44px}
+    .main{flex:1}
+    .head{font-size:14px;margin:0 0 6px}
+    .name a{font-weight:600;text-decoration:none;color:#111}
+    .handle a{color:#666;text-decoration:none;margin-left:6px}
     .time{color:#999;margin-left:6px}
-    .text{line-height:1.35}
-    .media img{max-width:100%;height:auto;border-radius:6px;display:block;margin-top:8px}
-    .counts{margin-top:6px;font-size:12px;color:#666}
-    .copyleft{width:100%;height:200px;padding:10px;border:1px solid #ddd;border-radius:8px;font-family:ui-monospace,Menlo,Consolas,monospace}
-    .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-    .pill{background:#eef5ff;border:1px solid #c9defa;color:#174ea6;border-radius:999px;padding:4px 8px;font-size:12px}
-    .embed-wrap{display:none}
+    .text{font-size:15px;line-height:1.35;word-wrap:break-word}
+    .text a{color:var(--accent);text-decoration:none}
+    .text a:hover{text-decoration:underline}
+    .media{margin-top:8px}
+    .media img{max-width:100%;height:auto;border-radius:6px;display:block}
+    .footer{margin-top:6px}
+    .footer a{font-size:12px;color:#666;text-decoration:none}
+    .footer a:hover{text-decoration:underline}
+    .pills{display:flex;gap:8px;flex-wrap:wrap}
+    .pill{background:#eef4ff;border:1px solid #d6e6ff;color:#245db2;padding:6px 10px;border-radius:999px;font-size:12px}
+    /* Embed code box */
+    .embed-wrap{display:none;margin-top:18px}
+    .embed-wrap textarea{width:100%;min-height:180px;padding:10px;border:1px solid #d8d8d8;border-radius:8px;font-family:ui-monospace,SFMono-Regular,Consolas,Monaco,monospace}
+    .copybar{display:flex;justify-content:space-between;align-items:center;margin:8px 0}
   </style>
 </head>
 <body>
@@ -41,133 +52,247 @@
 
     <div class="panel">
       <div class="row">
-        <div class="col" style="min-width:360px">
+        <div class="col" style="flex:2 1 320px">
           <label>Search (e.g., <i>Luka Doncic trade</i>)</label>
-          <input id="q" type="text" placeholder="Type keywords…" value="NBA" />
+          <input id="q" type="text" placeholder="NBA" value="NBA" />
         </div>
         <div class="col">
           <label>Lookback (hours)</label>
-          <input id="hours" type="number" value="6" min="1" />
+          <input id="hours" type="number" min="1" step="1" value="6" />
         </div>
         <div class="col">
           <label>Min reposts</label>
-          <input id="minReposts" type="number" value="10" min="0" />
+          <input id="minReposts" type="number" min="0" step="1" value="10" />
         </div>
         <div class="col">
           <label>Min likes</label>
-          <input id="minLikes" type="number" value="0" min="0" />
+          <input id="minLikes" type="number" min="0" step="1" value="0" />
         </div>
         <div class="col">
           <label>Limit</label>
-          <input id="limit" type="number" value="40" min="1" />
+          <input id="limit" type="number" min="1" step="1" value="40" />
         </div>
         <div class="col">
           <label>Sort by</label>
           <select id="sort">
-            <option value="reposts">Reposts (desc)</option>
-            <option value="likes">Likes (desc)</option>
-            <option value="total">Likes + Reposts (desc)</option>
-            <option value="time">Newest first</option>
+            <option value="reposts_desc">Reposts (desc)</option>
+            <option value="likes_desc">Likes (desc)</option>
+            <option value="time_desc">Newest first</option>
           </select>
         </div>
       </div>
 
-      <div class="checks">
+      <div class="checks" style="margin-top:8px">
         <label><input id="inclReplies" type="checkbox" /> Include replies</label>
         <label><input id="inclQuotes" type="checkbox" /> Include quotes</label>
-        <button class="btn" id="searchBtn">Search</button>
-        <button class="btn" id="embedBtn" style="background:#4a4a4a">Build Presto Embed</button>
+        <button id="searchBtn" class="btn primary" style="margin-left:auto">Search</button>
+        <button id="embedBtn" class="btn">Build Presto Embed</button>
       </div>
     </div>
 
-    <div class="panel">
-      <div class="results-h">
-        <div class="toolbar">
-          <span class="pill" id="pill-q">q: —</span>
-          <span class="pill" id="pill-window">window: —</span>
-          <span class="pill" id="pill-min">min reposts: —</span>
-          <span class="pill" id="pill-count">0 results</span>
-        </div>
+    <div class="results-h">
+      <div class="pills">
+        <span id="pillQ" class="pill">q: —</span>
+        <span id="pillWindow" class="pill">window: —</span>
+        <span id="pillMin" class="pill">min reposts: —</span>
+        <span id="pillCount" class="pill">0 results</span>
       </div>
-      <div id="cards" class="cards"></div>
-
-      <div id="embedWrap" class="embed-wrap" style="margin-top:16px">
-        <label>Presto embed HTML</label>
-        <textarea id="embedBox" class="copyleft" readonly></textarea>
-      </div>
+      <span class="muted">Tip: if a search returns empty, lower thresholds or add <code>&nocache=1</code> to bypass the 3-minute API cache.</span>
     </div>
 
-    <p class="muted">Tip: if a search returns empty, lower thresholds or add <code>&nocache=1</code> to bypass the 3-minute API cache.</p>
+    <div id="results" class="cards"></div>
+
+    <!-- Embed code output -->
+    <div id="embedWrap" class="embed-wrap">
+      <div class="copybar">
+        <strong>Embed code for Presto</strong>
+        <button id="copyBtn" class="btn">Copy</button>
+      </div>
+      <textarea id="embedBox" readonly></textarea>
+    </div>
   </div>
 
   <script>
-    // ---------- Small helpers ----------
-    const $ = (s) => document.querySelector(s);
     const els = {
-      q: $('#q'),
-      hours: $('#hours'),
-      minReposts: $('#minReposts'),
-      minLikes: $('#minLikes'),
-      limit: $('#limit'),
-      sort: $('#sort'),
-      inclReplies: $('#inclReplies'),
-      inclQuotes: $('#inclQuotes'),
-      searchBtn: $('#searchBtn'),
-      embedBtn: $('#embedBtn'),
-      cards: $('#cards'),
-      pillQ: $('#pill-q'),
-      pillWindow: $('#pill-window'),
-      pillMin: $('#pill-min'),
-      pillCount: $('#pill-count'),
-      embedWrap: $('#embedWrap'),
-      embedBox: $('#embedBox'),
+      q: document.getElementById('q'),
+      hours: document.getElementById('hours'),
+      minReposts: document.getElementById('minReposts'),
+      minLikes: document.getElementById('minLikes'),
+      limit: document.getElementById('limit'),
+      sort: document.getElementById('sort'),
+      inclReplies: document.getElementById('inclReplies'),
+      inclQuotes: document.getElementById('inclQuotes'),
+      searchBtn: document.getElementById('searchBtn'),
+      embedBtn: document.getElementById('embedBtn'),
+      results: document.getElementById('results'),
+      pillQ: document.getElementById('pillQ'),
+      pillWindow: document.getElementById('pillWindow'),
+      pillMin: document.getElementById('pillMin'),
+      pillCount: document.getElementById('pillCount'),
+      embedWrap: document.getElementById('embedWrap'),
+      embedBox: document.getElementById('embedBox'),
+      copyBtn: document.getElementById('copyBtn'),
     };
 
-    function htmlEscape(s=''){ return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+    const API = '/api/reactions';
 
-    async function fetchReactions(params){
-      const qs = new URLSearchParams(params).toString();
-      const url = `/api/reactions?${qs}`;
-      const r = await fetch(url, {credentials: 'omit'});
-      const data = await r.json().catch(() => ({}));
-      return Array.isArray(data.items) ? data.items : [];
+    function buildURL(params, nocache=0){
+      const u = new URL(API, location.origin);
+      u.searchParams.set('q', params.q);
+      u.searchParams.set('hours', params.hours);
+      u.searchParams.set('minReposts', params.minReposts);
+      u.searchParams.set('minLikes', params.minLikes);
+      u.searchParams.set('limit', params.limit);
+      u.searchParams.set('sort', params.sort);
+      if (params.includeReplies) u.searchParams.set('includeReplies', '1');
+      if (params.includeQuotes) u.searchParams.set('includeQuotes', '1');
+      if (nocache) u.searchParams.set('nocache', '1'); // builder bypasses cache
+      return u.toString();
     }
 
-    function render(items){
-      els.cards.innerHTML = items.map(p => {
-        const prof = p.url ? new URL(p.url) : null;
-        const parts = prof ? prof.pathname.split('/').filter(Boolean) : [];
-        const did = parts[1] ? parts[1] : '';
-        const profileUrl = prof ? `${prof.origin}/profile/${did}` : '#';
+    function escapeHtml(s=''){
+      return String(s).replace(/[&<>"']/g, c => ({
+        '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+      }[c]));
+    }
+
+    function linkify(html=''){
+      let out = html;
+      out = out.replace(/(https?:\/\/[^\s<]+)/gmi,
+        m => `<a href="${m}" target="_blank" rel="noopener nofollow">${m}</a>`);
+      out = out.replace(/\b((?:www\.)?(?:[a-z0-9-]+\.)+(?:com|co|io|net|org|news|tv|fm|gg|ai|link|app|be|ly|to|media|social|dev|us|uk|ca|de|fr|es|it|nl|se|no|dk|pl|cz|sk|pt|ie))(\/[^\s<]*)?/gmi,
+        (m, host, path='') => `<a href="https://${host}${path}" target="_blank" rel="noopener nofollow">${m}</a>`);
+      return out;
+    }
+
+    function profileFromPost(postUrl){
+      try{
+        const u = new URL(postUrl);
+        const parts = u.pathname.split('/').filter(Boolean);
+        const i = parts.indexOf('profile');
+        if (i >= 0 && parts[i+1]) return `${u.origin}/profile/${parts[i+1]}`;
+      }catch{}
+      return postUrl;
+    }
+
+    async function fetchReactions(params){
+      const url = buildURL(params, /*nocache*/1);
+      const r = await fetch(url, { credentials:'omit' });
+      if (!r.ok) throw new Error('fetch ' + r.status);
+      return r.json();
+    }
+
+    function render(items=[]){
+      if (!items.length){
+        els.results.innerHTML = '<p class="muted">No results for those filters.</p>';
+        return;
+      }
+      els.results.innerHTML = items.map(p => {
         const avatar = p.authorAvatar || '';
-        const media = p.mediaUrl ? `<div class="media"><img src="${p.mediaUrl}" loading="lazy" alt=""></div>` : '';
+        const postUrl = p.url || '#';
+        const profile = profileFromPost(postUrl);
+        const name = escapeHtml(p.authorDisplay || '');
+        const handle = escapeHtml(p.authorHandle || '');
+        const time = escapeHtml(p.tsLocal || '');
+        const body = linkify(p.html || '');
+        const img = p.mediaUrl ? `<div class="media"><img src="${p.mediaUrl}" alt="" loading="lazy"></div>` : '';
         return `
-          <article class="card">
-            <div class="name">
-              ${htmlEscape(p.authorDisplay || '')}
-              <a class="handle" href="${profileUrl}" target="_blank" rel="noopener">@${htmlEscape(p.authorHandle || '')}</a>
-              <span class="time"> • ${htmlEscape(p.tsLocal || '')}</span>
-            </div>
-            <div class="text">${p.html || ''}</div>
-            ${media}
-            <div class="counts">❤️ ${p.likeCount ?? 0} • 🔁 ${p.repostCount ?? 0}</div>
-          </article>`;
+<article class="card">
+  <img class="avatar" src="${avatar}" alt="">
+  <div class="main">
+    <p class="head">
+      <span class="name"><a href="${profile}" target="_blank" rel="noopener nofollow">${name}</a></span>
+      <span class="handle"><a href="${postUrl}" target="_blank" rel="noopener nofollow">@${handle}</a></span>
+      <span class="time"> • ${time}</span>
+    </p>
+    <div class="text">${body}</div>
+    ${img}
+    <div class="footer"><a href="${postUrl}" target="_blank" rel="noopener nofollow">Open on Bluesky</a></div>
+  </div>
+</article>`;
       }).join('');
     }
 
-    function buildEmbedHTML(items, params){
-      const { q, hours, minReposts, minLikes, limit, sort, inclReplies, inclQuotes } = params;
+    function buildEmbedHTML(params){
+      const src = buildURL(params, /*nocache*/0); // let edge cache work in embeds
       const code = `
-<!-- Bluesky Reactions (client render) -->
-<div id="bsky-reactions" data-q="${htmlEscape(q)}" data-hours="${hours}" data-minreposts="${minReposts}"
-  data-minlikes="${minLikes}" data-limit="${limit}" data-sort="${htmlEscape(sort)}"
-  data-inclreplies="${inclReplies ? 1 : 0}" data-inclquotes="${inclQuotes ? 1 : 0}">Loading…</div>
+<!-- Bluesky reactions embed -->
+<div id="bsky-embed" data-src="${src}" style="max-width:760px;margin:16px auto">
+  <div class="bsky-embed-wrap" style="font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif">
+    <p style="color:#666;font-size:14px;margin:8px 0">Loading reactions…</p>
+  </div>
+</div>
+
+<style>
+  #bsky-embed .card{display:flex;gap:12px;background:#fff;border:1px solid #eee;border-radius:10px;padding:14px;margin:10px 0}
+  #bsky-embed .avatar{width:44px;height:44px;border-radius:50%;object-fit:cover;background:#f3f3f3;flex:0 0 44px}
+  #bsky-embed .name a{font-weight:600;text-decoration:none;color:#111}
+  #bsky-embed .handle a{color:#666;text-decoration:none;margin-left:6px}
+  #bsky-embed .time{color:#999;margin-left:6px}
+  #bsky-embed .text{font-size:15px;line-height:1.35}
+  #bsky-embed .text a{color:#0a66c2;text-decoration:none}
+  #bsky-embed .text a:hover{text-decoration:underline}
+  #bsky-embed .media{margin-top:8px}
+  #bsky-embed .media img{max-width:100%;height:auto;border-radius:6px;display:block}
+  #bsky-embed .footer{margin-top:6px}
+  #bsky-embed .footer a{font-size:12px;color:#666;text-decoration:none}
+</style>
+
 <script>
-(async()=>{const e=document.getElementById('bsky-reactions');const g=e.dataset;const u='/api/reactions?'+new URLSearchParams({
-  q:g.q,hours:g.hours,minReposts:g.minreposts,minLikes:g.minlikes,limit:g.limit,sort:g.sort,
-  includeReplies:g.inclreplies,includeQuotes:g.inclquotes}).toString();
-const r=await fetch(u);const d=await r.json();const a=Array.isArray(d.items)?d.items:[];
-e.innerHTML=(a.length?'<ul>'+a.map(p=>'<li><a href=\"'+p.url+'\" rel=\"nofollow\" target=\"_blank\">'+(p.authorDisplay||'')+'</a>: '+(p.text||'')+'</li>').join('')+'</ul>':'<p>No results.</p>');})();</script>`;
+(function(){
+  const root = document.getElementById('bsky-embed');
+  const wrap = root.querySelector('.bsky-embed-wrap');
+  const src  = root.dataset.src;
+
+  function profileFromPost(u){
+    try{
+      const url = new URL(u);
+      const parts = url.pathname.split('/').filter(Boolean);
+      const i = parts.indexOf('profile');
+      if (i >= 0 && parts[i+1]) return \`\${url.origin}/profile/\${parts[i+1]}\`;
+    }catch(e){}
+    return u;
+  }
+  function linkify(html){
+    let out = html || '';
+    out = out.replace(/(https?:\\/\\/[^\\s<]+)/gmi,
+      m => \`<a href="\${m}" target="_blank" rel="noopener nofollow">\${m}</a>\`);
+    out = out.replace(/\\b((?:www\\.)?(?:[a-z0-9-]+\\.)+(?:com|co|io|net|org|news|tv|fm|gg|ai|link|app|be|ly|to|media|social|dev|us|uk|ca|de|fr|es|it|nl|se|no|dk|pl|cz|sk|pt|ie))(\\/[^\\s<]*)?/gmi,
+      (m, host, path='') => \`<a href="https://\${host}\${path}" target="_blank" rel="noopener nofollow">\${m}</a>\`);
+    return out;
+  }
+
+  fetch(src, {credentials:'omit'}).then(r => r.json()).then(data => {
+    const items = Array.isArray(data.items) ? data.items : [];
+    if (!items.length){ wrap.innerHTML = '<p style="color:#666">No reactions found.</p>'; return; }
+    wrap.innerHTML = items.map(p => {
+      const avatar = p.authorAvatar || '';
+      const postUrl = p.url || '#';
+      const profile = profileFromPost(postUrl);
+      const name = (p.authorDisplay||'').replace(/[&<>"]/g, s=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[s]));
+      const handle = (p.authorHandle||'').replace(/[&<>"]/g, s=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[s]));
+      const time = (p.tsLocal||'').replace(/[&<>"]/g, s=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[s]));
+      const body = linkify(p.html||'');
+      const img = p.mediaUrl ? \`<div class="media"><img src="\${p.mediaUrl}" alt="" loading="lazy"></div>\` : '';
+      return \`
+<article class="card">
+  <img class="avatar" src="\${avatar}" alt="">
+  <div class="main">
+    <p class="head">
+      <span class="name"><a href="\${profile}" target="_blank" rel="noopener nofollow">\${name}</a></span>
+      <span class="handle"><a href="\${postUrl}" target="_blank" rel="noopener nofollow">@\${handle}</a></span>
+      <span class="time"> • \${time}</span>
+    </p>
+    <div class="text">\${body}</div>
+    \${img}
+    <div class="footer"><a href="\${postUrl}" target="_blank" rel="noopener nofollow">Open on Bluesky</a></div>
+  </div>
+</article>\`;
+    }).join('');
+  }).catch(()=>{ wrap.innerHTML = '<p style="color:#666">Stream unavailable.</p>'; });
+})();
+<\/script>
+`;
       return code.trim();
     }
 
@@ -178,35 +303,58 @@ e.innerHTML=(a.length?'<ul>'+a.map(p=>'<li><a href=\"'+p.url+'\" rel=\"nofollow\
         minReposts: Number(els.minReposts.value || 0),
         minLikes: Number(els.minLikes.value || 0),
         limit: Number(els.limit.value || 40),
-        sort: els.sort.value,
+        sort: els.sort.value || 'reposts_desc',
         includeReplies: els.inclReplies.checked ? 1 : 0,
         includeQuotes: els.inclQuotes.checked ? 1 : 0,
-        nocache: 1   // always bypass cache in the builder UI
       };
 
+      // update pills
       els.pillQ.textContent = `q: ${params.q || '—'}`;
       els.pillWindow.textContent = `window: ${params.hours}h`;
       els.pillMin.textContent = `min reposts: ${params.minReposts}`;
 
       els.searchBtn.disabled = true;
-      const items = await fetchReactions(params).catch(()=>[]);
-      els.searchBtn.disabled = false;
+      try{
+        const data = await fetchReactions(params);
+        const items = Array.isArray(data.items) ? data.items : [];
+        els.pillCount.textContent = `${items.length} results`;
+        render(items);
+      }catch(e){
+        els.results.innerHTML = `<p class="muted">Error: ${escapeHtml(String(e.message||e))}</p>`;
+        els.pillCount.textContent = `0 results`;
+      }finally{
+        els.searchBtn.disabled = false;
+      }
+    }
 
-      els.pillCount.textContent = `${items.length} results`;
-      render(items);
-
-      // prepare embed block
-      const code = buildEmbedHTML(items, params);
+    function buildEmbed(){
+      const params = {
+        q: els.q.value.trim(),
+        hours: Number(els.hours.value || 6),
+        minReposts: Number(els.minReposts.value || 0),
+        minLikes: Number(els.minLikes.value || 0),
+        limit: Number(els.limit.value || 40),
+        sort: els.sort.value || 'reposts_desc',
+        includeReplies: els.inclReplies.checked ? 1 : 0,
+        includeQuotes: els.inclQuotes.checked ? 1 : 0,
+      };
+      const code = buildEmbedHTML(params);
       els.embedBox.value = code;
       els.embedWrap.style.display = 'block';
-      els.embedBox.focus();
-      els.embedBox.select();
+      els.embedBox.focus(); els.embedBox.select();
     }
 
     function init(){
       els.searchBtn.addEventListener('click', runSearch);
-      els.embedBtn.addEventListener('click', () => els.embedWrap.style.display='block');
-      // first load
+      els.embedBtn.addEventListener('click', buildEmbed);
+      els.copyBtn.addEventListener('click', () => {
+        els.embedBox.select();
+        document.execCommand('copy');
+        els.copyBtn.textContent = 'Copied!';
+        setTimeout(()=>els.copyBtn.textContent='Copy', 1200);
+      });
+      // sensible default first load
+      els.q.value = 'NBA';
       runSearch();
     }
     init();
