@@ -1,33 +1,43 @@
-# netlify.toml  (root of the repo)
+# netlify.toml (root of the repo)
 
 [build]
-  functions = "netlify/functions"
   publish   = "public"
+  functions = "netlify/functions"
 
 [functions]
+  # Use esbuild for ESM functions
   node_bundler = "esbuild"
-  included_files = []
 
-# Existing stream endpoint
+# ── Function endpoints ─────────────────────────────────────────────────────────
+
+# Existing stream endpoint used by reactions.html (keep if you use it)
 [[redirects]]
-  from   = "/api/stream"
-  to     = "/.netlify/functions/stream"
+  from = "/api/stream"
+  to   = "/.netlify/functions/stream"
   status = 200
 
-# NEW: reactions endpoint used by /reactions.html
+# Existing reactions endpoint (keep)
 [[redirects]]
-  from   = "/api/reactions"
-  to     = "/.netlify/functions/reactions"
+  from = "/api/reactions"
+  to   = "/.netlify/functions/reactions"
   status = 200
 
-  # --- Add these two blocks only ---
+# ✅ New persistence API for the Watchlist page
 [[redirects]]
-  from = "/api/watchlist"
-  to   = "/.netlify/functions/watchlist"
+  from = "/api/watchlist-accounts"
+  to   = "/.netlify/functions/watchlist-accounts"
   status = 200
 
+# ── Page routes (nice URLs) ────────────────────────────────────────────────────
+
+# Reactions builder UI
+[[redirects]]
+  from = "/reactions"
+  to   = "/reactions.html"
+  status = 200
+
+# Watchlist UI
 [[redirects]]
   from = "/watchlist"
   to   = "/watchlist.html"
   status = 200
-
