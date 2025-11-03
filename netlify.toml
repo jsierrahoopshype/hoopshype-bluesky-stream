@@ -19,3 +19,15 @@
   from   = "/api/reactions"
   to     = "/.netlify/functions/reactions"
   status = 200
+
+  # --- Add these two blocks only ---
+[[redirects]]
+  from = "/api/watchlist"
+  to   = "/.netlify/functions/watchlist"
+  status = 200
+
+[[redirects]]
+  from = "/watchlist"
+  to   = "/watchlist.html"
+  status = 200
+
