@@ -1,76 +1,98 @@
 // netlify/functions/watchlist-accounts.mjs
 import { getStore } from '@netlify/blobs';
 
-const CORS = {
+const STORE_NAME = 'watchlist-accounts';
+const KEY = 'accounts.json';
+
+// CORS helpers
+const cors = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type'
 };
 
-const KEY = 'accounts_v1';
+function json(status, body) {
+  return {
+    statusCode: status,
+    headers: { 'Content-Type': 'application/json', ...cors },
+    body: JSON.stringify(body)
+  };
+}
 
-function json(statusCode, data) {
-  return { statusCode, headers: { 'Content-Type': 'application/json', ...CORS }, body: JSON.stringify(data) };
+function text(status, body = '') {
+  return {
+    statusCode: status,
+    headers: { 'Content-Type': 'text/plain', ...cors },
+    body
+  };
 }
-function err(statusCode, message) {
-  return json(statusCode, { error: message });
-}
-function uniquePush(arr, item, key = 'handle') {
-  if (!arr.some(x => (x[key] || '').toLowerCase() === (item[key] || '').toLowerCase())) arr.push(item);
+
+// Try automatic Blobs config first; if not present fall back to manual mode
+function getBlobsStore() {
+  try {
+    // Works when Netlify auto-configures the function for Blobs
+    return getStore(STORE_NAME);
+  } catch (_) {
+    const siteID =
+      process.env.NETLIFY_SITE_ID ||
+      process.env.SITE_ID; // allow either name
+
+    const token =
+      process.env.NETLIFY_API_TOKEN ||
+      process.env.NETLIFY_TOKEN; // allow either name
+
+    if (!siteID || !token) {
+      throw new Error(
+        'Netlify Blobs is not configured. Set env vars NETLIFY_SITE_ID and NETLIFY_API_TOKEN.'
+      );
+    }
+    // Manual mode using siteID + token
+    return getStore({ name: STORE_NAME, siteID, token });
+  }
 }
 
 export async function handler(event) {
-  // CORS preflight
-  if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS };
+  // Preflight for CORS
+  if (event.httpMethod === 'OPTIONS') return text(204);
 
-  const store = getStore('watchlist'); // a named blob store
-  let state = await store.get(KEY, { type: 'json' });
-  if (!state || typeof state !== 'object') state = { extras: [], removals: [] };
+  let store;
+  try {
+    store = getBlobsStore();
+  } catch (err) {
+    return json(500, { error: err.message });
+  }
 
   try {
     if (event.httpMethod === 'GET') {
-      return json(200, state);
+      // Shape: { enabled: ["@user1.bsky.social", ...], updatedAt: ISO }
+      const raw = await store.get(KEY);
+      if (!raw) return json(200, { enabled: [], updatedAt: null });
+      try {
+        return json(200, JSON.parse(raw));
+      } catch {
+        // If somehow plain text was stored, wrap it
+        return json(200, { enabled: String(raw).split(/\r?\n/).filter(Boolean), updatedAt: null });
+      }
     }
 
     if (event.httpMethod === 'POST') {
-      const { handle, display } = JSON.parse(event.body || '{}');
-      const h = String(handle || '').trim().replace(/^@/, '');
-      if (!h) return err(400, 'handle required');
+      const payload = JSON.parse(event.body || '{}');
+      const enabled = Array.isArray(payload.enabled) ? payload.enabled : [];
 
-      // If it was in removals, un-remove it
-      state.removals = state.removals.filter(x => x.toLowerCase() !== h.toLowerCase());
-      uniquePush(state.extras, { handle: h, display: display || '@' + h }, 'handle');
-
-      await store.set(KEY, JSON.stringify(state));
-      return json(200, state);
-    }
-
-    if (event.httpMethod === 'DELETE') {
-      const { handle } = JSON.parse(event.body || '{}');
-      const h = String(handle || '').trim().replace(/^@/, '');
-      if (!h) return err(400, 'handle required');
-
-      // Remove from extras if present
-      state.extras = state.extras.filter(x => x.handle.toLowerCase() !== h.toLowerCase());
-      // Add to removals
-      if (!state.removals.some(r => r.toLowerCase() === h.toLowerCase())) state.removals.push(h);
-
-      await store.set(KEY, JSON.stringify(state));
-      return json(200, state);
-    }
-
-    if (event.httpMethod === 'PUT') {
-      const { extras, removals } = JSON.parse(event.body || '{}');
-      state = {
-        extras: Array.isArray(extras) ? extras.map(x => ({ handle: String(x.handle).trim().replace(/^@/, ''), display: x.display || '@' + x.handle })) : [],
-        removals: Array.isArray(removals) ? removals.map(h => String(h).trim().replace(/^@/, '')) : [],
+      const record = {
+        enabled,
+        updatedAt: new Date().toISOString()
       };
-      await store.set(KEY, JSON.stringify(state));
-      return json(200, state);
+
+      await store.set(KEY, JSON.stringify(record), {
+        metadata: { kind: 'watchlist-accounts' }
+      });
+
+      return json(200, record);
     }
 
-    return err(405, 'Method not allowed');
-  } catch (e) {
-    return err(500, e.message || 'Server error');
+    return text(405, 'Method Not Allowed');
+  } catch (err) {
+    return json(500, { error: err.message });
   }
 }
