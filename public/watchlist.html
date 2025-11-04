@@ -2,432 +2,452 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>Bluesky Watchlist</title>
 <style>
   :root{
-    --bg:#fff; --text:#111; --muted:#5a6573;
-    --panel:#fff; --border:#d9e0ea; --accent:#0b77ff; --chip:#f4f7fb;
+    --bg:#fff;
+    --fg:#111;
+    --muted:#666;
+    --line:#e7e7ea;
+    --pill:#eef2ff;
+    --pill-text:#253bff;
+    --brand:#1967ff;
+    --card:#fafafa;
   }
-  html,body{height:100%}
-  body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,Segoe UI,Roboto,Helvetica,Arial}
-  h1{font-weight:700;font-size:20px;margin:0 0 12px}
-  .wrap{max-width:1200px;margin:24px auto;padding:0 16px}
-  .grid{display:grid;grid-template-columns:1fr 360px;gap:16px}
-  .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--fg);font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Apple Color Emoji","Segoe UI Emoji";}
+  .wrap{max-width:1200px;margin:0 auto;padding:18px;}
+  h1{font-size:20px;margin:0 0 14px 0}
+  .grid{display:grid;grid-template-columns:1fr 360px;gap:18px}
+  @media (max-width:1100px){.grid{grid-template-columns:1fr}}
+  .panel{border:1px solid var(--line);border-radius:10px;background:#fff}
+  .panel > .head{padding:14px 14px 0 14px}
+  .panel > .body{padding:14px}
   .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-  .row > *{min-height:36px}
-  input[type="number"],input[type="text"],select{background:#fff;border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:8px}
-  input[type="checkbox"]{transform:translateY(1px)}
-  button{background:var(--accent);color:#fff;border:0;border-radius:8px;padding:9px 14px;font-weight:700;cursor:pointer}
-  button.secondary{background:#eef3fb;color:#0b2b60;border:1px solid var(--border)}
-  .chips{max-height:220px;overflow:auto;border:1px solid var(--border);border-radius:12px;padding:10px;margin-top:8px;background:#fff}
-  .chip{display:inline-flex;align-items:center;gap:8px;background:var(--chip);border:1px solid var(--border);color:var(--text);border-radius:999px;padding:6px 10px;margin:6px 6px 0 0;white-space:nowrap}
+  .row > *{margin:6px 0}
+  input[type="text"],input[type="number"],select{height:34px;border:1px solid var(--line);border-radius:8px;padding:6px 10px;background:#fff;color:var(--fg)}
+  input[type="number"]{width:100px}
+  .grow{flex:1}
+  .btn{background:#f4f6ff;border:1px solid #cdd6ff;color:#1136ff;border-radius:8px;height:36px;padding:0 12px;cursor:pointer}
+  .btn.primary{background:var(--brand);color:#fff;border-color:var(--brand)}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
   .muted{color:var(--muted)}
-  .results{display:flex;flex-direction:column;gap:12px;margin-top:10px}
-  .item{border:1px solid var(--border);border-radius:12px;padding:12px;background:#fff}
-  .item .meta{font-size:12px;color:var(--muted);margin-bottom:6px;display:flex;gap:8px;flex-wrap:wrap}
-  .links{margin-top:6px;font-size:12px;color:var(--muted)}
-  .links a{margin-right:8px}
-  .right-sticky{position:sticky;top:12px;height:calc(100dvh - 48px)}
-  .right-sticky .card{height:100%;display:flex;flex-direction:column}
-  .right-sticky .card textarea{flex:1;min-height:200px;background:#fff;border:1px solid var(--border);border-radius:12px;color:var(--text);padding:10px;resize:vertical}
-  .pill{display:inline-flex;background:#eef3fb;border:1px solid var(--border);border-radius:999px;padding:4px 8px;font-size:12px;margin-right:6px}
-  .spinner{display:none}
-  .spinner.on{display:inline-block;inline-size:14px;block-size:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
-  @keyframes spin{to{transform:rotate(360deg)}}
-  .error{color:#c21d12;font-weight:600}
-  a{color:#0b58d1;text-decoration:none}
-  a:hover{text-decoration:underline}
+  .chips{display:flex;flex-wrap:wrap;gap:8px}
+  .chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);padding:6px 10px;border-radius:999px;background:#fff}
+  .chip input{transform:translateY(1px)}
+  .chip a{color:var(--fg);text-decoration:none}
+  .chip .pill{background:var(--pill);color:var(--pill-text);padding:2px 6px;border-radius:999px;font-size:12px}
+  .items{display:flex;flex-direction:column;gap:12px}
+  .card{border:1px solid var(--line);border-radius:10px;background:var(--card);padding:12px}
+  .card .top{display:flex;gap:8px;align-items:center;margin-bottom:6px}
+  .avatar{width:28px;height:28px;border-radius:50%;background:#ddd;flex:0 0 28px}
+  .author{font-weight:600}
+  .handle{color:var(--muted)}
+  .pills{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0}
+  .pill-btn{display:inline-block;background:#eef7ff;color:#0b60c5;border:1px solid #cde7ff;border-radius:999px;padding:2px 8px;font-size:12px;text-decoration:none}
+  .thumb{margin-top:8px;max-width:100%;border-radius:8px;border:1px solid var(--line)}
+  .side .head{display:flex;justify-content:space-between;align-items:center}
+  .copy-box{min-height:300px;border:1px solid var(--line);border-radius:8px;padding:10px;white-space:pre-wrap;background:#fff}
+  .toolbar{display:flex;gap:10px;flex-wrap:wrap}
+  .status{margin-left:8px}
 </style>
 </head>
 <body>
 <div class="wrap">
   <h1>Bluesky Watchlist</h1>
   <div class="grid">
-    <div class="card">
-      <div class="row">
-        <input id="q" type="text" placeholder="(optional filter in post text)" style="flex:1 1 320px">
-        <label>Lookback (h) <input id="hours" type="number" min="1" value="24" style="width:76px"></label>
-        <label>Min reposts <input id="minReposts" type="number" min="0" value="0" style="width:70px"></label>
-        <label>Min likes <input id="minLikes" type="number" min="0" value="0" style="width:70px"></label>
-        <label>Limit <input id="limit" type="number" min="1" value="150" style="width:70px"></label>
+    <div class="panel">
+      <div class="head">
+        <div class="row">
+          <input id="q" class="grow" type="text" placeholder="(optional) filter in post text">
+          <label>Lookback (h) <input id="hours" type="number" value="24" min="1" max="168"></label>
+          <label>Min reposts <input id="minReposts" type="number" value="0" min="0"></label>
+          <label>Min likes <input id="minLikes" type="number" value="0" min="0"></label>
+          <label>Limit <input id="limit" type="number" value="150" min="1" max="500"></label>
+        </div>
+        <div class="row">
+          <label><input id="inclReplies" type="checkbox"> Include replies</label>
+          <label><input id="inclQuotes" type="checkbox" checked> Include quotes</label>
+          <label><input id="exclReposts" type="checkbox" checked> Exclude reposts</label>
+          <label><input id="nocache" type="checkbox"> nocache</label>
+          <button id="btnSearch" class="btn primary">Search</button>
+          <span id="status" class="muted status"></span>
+        </div>
       </div>
-      <div class="row" style="margin-top:8px">
-        <select id="sort">
-          <option value="desc">Recent (desc)</option>
-          <option value="asc">Oldest (asc)</option>
-          <option value="likes">Most likes</option>
-          <option value="reposts">Most reposts</option>
-        </select>
-        <label><input id="incReplies" type="checkbox"> Include replies</label>
-        <label><input id="incQuotes" type="checkbox" checked> Include quotes</label>
-        <label><input id="excReposts" type="checkbox" checked> Exclude reposts</label>
-        <label><input id="nocache" type="checkbox" checked> nocache</label>
-        <button id="searchBtn">Search <span id="spin" class="spinner"></span></button>
-        <button id="allBtn" class="secondary">All</button>
-        <button id="noneBtn" class="secondary">None</button>
-        <span id="err" class="error" role="alert"></span>
+      <div class="body">
+        <div class="row">
+          <button id="btnAll" class="btn">All</button>
+          <button id="btnNone" class="btn">None</button>
+        </div>
+        <div id="accountsBox" class="chips" style="margin-top:8px"></div>
       </div>
-
-      <div class="muted" style="margin-top:10px">Accounts (from <code>reporters.csv</code>)</div>
-      <div id="accountsBox" class="chips"></div>
-
-      <div id="results" class="results"></div>
+      <div class="body">
+        <div id="results" class="items"></div>
+      </div>
     </div>
 
-    <div class="right-sticky">
-      <div class="card">
-        <div class="row" style="justify-content:space-between">
-          <div class="muted">Selected <span id="selCount">0</span></div>
-          <label class="muted"><input id="priorityFirst" type="checkbox" checked> Priority first</label>
+    <div class="panel side">
+      <div class="head">
+        <div class="toolbar">
+          <button id="copyTxt" class="btn primary">Copy plain text</button>
+          <button id="copyCsv" class="btn">Copy CSV</button>
+          <button id="copyHtml" class="btn">Copy publisher-safe HTML</button>
         </div>
-        <div class="row" style="margin-top:8px">
-          <button id="copyTxt">Copy plain text</button>
-          <button id="copyCsv" class="secondary">Copy CSV</button>
-          <button id="copyHtml" class="secondary">Copy publisher-safe HTML</button>
-        </div>
-        <div class="muted" style="margin-top:10px">Preview of copied output…</div>
-        <textarea id="preview" spellcheck="false"></textarea>
+      </div>
+      <div class="body">
+        <div class="muted" style="margin:4px 0 8px 0">Preview of copied output…</div>
+        <div id="preview" class="copy-box"></div>
       </div>
     </div>
   </div>
 </div>
 
 <script>
-/* ============ small utils ============ */
-const $ = s => document.querySelector(s);
-const $$ = s => Array.from(document.querySelectorAll(s));
-const delay = ms => new Promise(r => setTimeout(r, ms));
-const URL_RE = /https?:\/\/[^\s<>()'"]+/g;
-const utm = url => {
-  try{ const u=new URL(url); if(!u.searchParams.has('utm_source')) u.searchParams.set('utm_source','hoopshype'); return u.toString(); }
-  catch{ return url }
-};
-const decode = s => { const t=document.createElement('textarea'); t.innerHTML=s||''; return t.value; };
-const stripTags = h => (h||'').replace(/<[^>]+>/g,'');
-const oneline = s => (s||'').replace(/\s*\n+\s*/g,' ').replace(/\s\s+/g,' ').trim();
-const linkify = s => (s||'').replace(/\n/g,'<br>').replace(URL_RE, m=>`<a target="_blank" rel="noopener" href="${m}">${m}</a>`);
-const prof = (handle,did)=> did && /^did:plc:/.test(did) ? `https://bsky.app/profile/${did}` : (handle?`https://bsky.app/profile/${handle.replace(/^@/,'')}`:'');
+/* ---------- tiny helpers ---------- */
+const $  = s=>document.querySelector(s);
+const $$ = s=>Array.from(document.querySelectorAll(s));
+const prof = h => `https://bsky.app/profile/${h.replace(/^@/,'')}`;
+const utm  = u => u + (u.includes('?') ? '&' : '?') + 'utm_source=hoopshype';
+const isVideoLink = u => /(youtube\.com|youtu\.be|vimeo\.com|tiktok\.com|instagram\.com|x\.com|twitter\.com|clips?|video)/i.test(u);
 
-/* ============ robust CSV parsing ============ */
+/* ---------- persistence (server optional, local fallback) ---------- */
+const LS_KEY = 'watchlist.enabled';
+
+async function loadBlobRaw(){
+  try{
+    const r = await fetch('/api/watchlist-accounts');
+    if(!r.ok) return null;
+    return await r.json();
+  }catch{ return null }
+}
+async function saveBlob(enabled){
+  try{
+    await fetch('/api/watchlist-accounts',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({enabled})});
+  }catch{}
+}
+function loadLocal(){
+  try{ return JSON.parse(localStorage.getItem(LS_KEY)||'[]') }catch{ return [] }
+}
+function saveLocal(arr){
+  localStorage.setItem(LS_KEY, JSON.stringify(arr||[]));
+}
+
+/* ---------- CSV loading & smart handle extraction ---------- */
+async function fetchReporters(){
+  const text = await fetch('/reporters.csv',{cache:'no-store'}).then(r=>r.text());
+  const rows = parseCSV(text);
+  const handles = extractHandlesFromRows(rows);
+  // Create objects {handle}
+  return handles.map(h => ({ handle: h }));
+}
+
+// tolerant CSV parser
 function parseCSV(text){
-  // Basic RFC4180-ish parser (no deps)
-  const rows=[]; let i=0, cur=[], cell='', inQ=false;
-  while(i<=text.length){
-    const c=text[i]||'\n';
-    if(inQ){
-      if(c==='"' && text[i+1]==='"'){ cell+='"'; i+=2; continue; }
-      if(c==='"'){ inQ=false; i++; continue; }
-      cell+=c; i++; continue;
-    }else{
-      if(c==='"' ){ inQ=true; i++; continue; }
-      if(c===',' ){ cur.push(cell); cell=''; i++; continue; }
-      if(c==='\n' || i===text.length){ cur.push(cell); rows.push(cur); cur=[]; cell=''; i++; continue; }
-      cell+=c; i++; continue;
+  const out = [];
+  let row = [], cell = '', q = false;
+  for(let i=0;i<text.length;i++){
+    const c = text[i], n = text[i+1];
+    if(q){
+      if(c === '"' && n === '"'){ cell += '"'; i++; continue; }
+      if(c === '"'){ q = false; continue; }
+      cell += c; continue;
+    }
+    if(c === '"'){ q = true; continue; }
+    if(c === ','){ row.push(cell); cell=''; continue; }
+    if(c === '\n' || c === '\r'){
+      if(cell.length || row.length) { row.push(cell); out.push(row); row=[]; cell=''; }
+      if(c === '\r' && n === '\n') i++;
+      continue;
+    }
+    cell += c;
+  }
+  if(cell.length || row.length){ row.push(cell); out.push(row); }
+  return out.filter(r => r.some(v => String(v).trim().length));
+}
+
+// NEW: robust scanner for real Bluesky handles (must include a dot)
+function extractHandlesFromRows(rows){
+  const handles = new Set();
+
+  // 1) scan all cells for @xxx.yyy
+  for(const row of rows){
+    for(let cell of row){
+      cell = String(cell||'');
+      const matches = cell.match(/@[\w.-]+(?:\.[\w.-]+)+/g);
+      if(matches) matches.forEach(h => handles.add(h.trim()));
     }
   }
-  return rows.filter(r=>r.length && r.some(x=>x.trim()!==''));
-}
-function extractHandlesFromRows(rows){
-  if(!rows.length) return [];
-  // If first row contains 'handle' header, use that column; else try first col that looks like a handle
-  const header = rows[0].map(h=>h.trim().toLowerCase());
-  let body = rows;
-  let idx = header.findIndex(h=>h==='handle' || h==='author' || h==='username');
-  if(idx>=0){ body = rows.slice(1); }
-  else{ idx = 0; } // fallback: first column
+  if(handles.size) return Array.from(handles);
 
-  const looksHandle = v => /^@?[\w.-]+(?:\.[\w.-]+)*$/.test(v) || /bsky\.social/.test(v);
-  // If chosen column isn't handle-like, find one that is
-  if(body.length && !looksHandle((body[0][idx]||'').trim())){
-    const col = body[0].findIndex(v=>looksHandle((v||'').trim()));
-    if(col>=0) idx=col;
-  }
-  const toHandle = v=>{
-    let s=(v||'').trim();
-    // take only the handle-ish token if a cell had multiple fields like '@foo | Name'
-    const m = s.match(/@[\w\.-]+(?:\.[\w\.-]+)*/);
-    if(m) s=m[0];
-    if(!s.startsWith('@')) s='@'+s;
-    return s;
-  };
-  return body.map(r=>toHandle(r[idx])).filter(h=>looksHandle(h.replace(/^@/,'')));
-}
-
-/* ============ reporters.csv ============ */
-async function fetchReporters(){
-  const res = await fetch('/reporters.csv?_='+Date.now());
-  const txt = await res.text();
-  const rows = parseCSV(txt);
-  const handles = extractHandlesFromRows(rows);
-  // mark 'priority' if there's a priority column
-  const header = rows[0]?.map(h=>h.trim().toLowerCase())||[];
-  const prIdx = header.findIndex(h=>h==='priority');
-  const map = new Map();
-  if(prIdx>=0){
+  // 2) header fallback if there is a "handle" style column
+  const header = rows[0]?.map(h => String(h).trim().toLowerCase()) || [];
+  const idx = ['handle','author','username'].map(k => header.indexOf(k)).find(i => i >= 0);
+  if(idx >= 0){
+    const out=[];
     rows.slice(1).forEach(r=>{
-      const h = (r[header.findIndex(h=>h==='handle')||0]||'').trim();
-      if(!h) return;
-      const handle = h.startsWith('@')?h:'@'+h;
-      const priority = String(r[prIdx]||'').trim().toLowerCase()==='true';
-      map.set(handle, priority);
+      const raw = (r[idx]||'').trim();
+      const m = raw.match(/@[\w.-]+(?:\.[\w.-]+)+/);
+      if(m) out.push(m[0]);
     });
+    if(out.length) return Array.from(new Set(out));
   }
-  return handles.map(h=>({handle:h, priority: map.get(h)===true}));
+
+  // 3) last fallback: first @token with dot per cell
+  for(const row of rows){
+    for(let cell of row){
+      const m = String(cell||'').match(/@[\w.-]+(?:\.[\w.-]+)+/);
+      if(m) handles.add(m[0]);
+    }
+  }
+  return Array.from(handles);
 }
 
-/* ============ blob/local persistence ============ */
-const BLOB_KEY='watchlist-accounts';
-async function loadBlobRaw(){
-  try{ const r=await fetch('/api/watchlist-accounts'); if(!r.ok) return null;
-       const ct=r.headers.get('content-type')||''; if(!ct.includes('application/json')) return null;
-       return await r.json();
-  }catch{return null}
-}
-async function saveBlob(enabled){ try{ await fetch('/api/watchlist-accounts',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({enabled})}); }catch{} }
-function loadLocal(){ try{ return JSON.parse(localStorage.getItem(BLOB_KEY)||'null') }catch{return null} }
-function saveLocal(enabled){ try{ localStorage.setItem(BLOB_KEY,JSON.stringify(enabled)) }catch{} }
-
-/* ============ UI building ============ */
+/* ---------- build UI for accounts ---------- */
 async function buildAccountsUI(){
   const reporters = await fetchReporters();
-  const box = $('#accountsBox'); box.innerHTML='';
+  const allHandles = reporters.map(r => r.handle);
 
-  const server=await loadBlobRaw();
+  const box = $('#accountsBox');
+  box.innerHTML = '';
+
+  // persisted selections
+  const server = await loadBlobRaw();
   const serverEnabled = server && Array.isArray(server.enabled) ? server.enabled : null;
-  const localEnabled = loadLocal();
-  const fallToAll = arr => (!arr || (Array.isArray(arr) && arr.length===0));
-  const allHandles = reporters.map(r=>r.handle);
-  const enabled = fallToAll(serverEnabled) && fallToAll(localEnabled) ? allHandles :
-                  !fallToAll(serverEnabled) ? serverEnabled : localEnabled;
+  const localEnabled  = loadLocal();
+  const firstTime = (!serverEnabled || !serverEnabled.length) && (!localEnabled || !localEnabled.length);
+  const enabled = firstTime ? allHandles : (serverEnabled && serverEnabled.length ? serverEnabled : localEnabled);
 
   reporters.forEach((r,i)=>{
-    const id='acc_'+i;
-    const checked = enabled.includes(r.handle);
-    const el=document.createElement('label');
-    el.className='chip';
-    el.innerHTML=`
-      <input type="checkbox" id="${id}" data-handle="${r.handle}" ${checked?'checked':''}/>
-      <a href="${prof(r.handle)}" target="_blank" rel="noopener">${r.handle}</a>
-      ${r.priority?'<span class="pill">priority</span>':''}`;
+    const id = 'acc_' + i;
+    const checked = firstTime || enabled.includes(r.handle);
+    const el = document.createElement('label');
+    el.className = 'chip';
+    el.innerHTML = `
+      <input type="checkbox" id="${id}" data-handle="${r.handle}" ${checked?'checked':''}>
+      <a href="${prof(r.handle)}" target="_blank" rel="noopener">${r.handle}</a>`;
     box.appendChild(el);
   });
 
+  // persist on change
   box.addEventListener('change', ()=>{
-    const list=$$('#accountsBox input[type="checkbox"]:checked').map(i=>i.dataset.handle);
-    saveLocal(list); saveBlob(list);
+    const list = $$('#accountsBox input[type="checkbox"]:checked').map(i=>i.dataset.handle);
+    saveLocal(list);
+    saveBlob(list);
   });
 
-  if (fallToAll(serverEnabled) && fallToAll(localEnabled)) { // first time or empty => save ALL
-    saveLocal(allHandles); saveBlob(allHandles);
-  }
+  // save ALL on first run so it sticks
+  if(firstTime){ saveLocal(allHandles); saveBlob(allHandles); }
+
   return reporters;
 }
 
-/* ============ rendering ============ */
-function extractLinksFromHtml(html){
-  const out=[]; if(!html) return out;
-  const d=document.createElement('div'); d.innerHTML=html;
-  d.querySelectorAll('a[href]').forEach(a=>out.push(a.href));
-  d.querySelectorAll('img[src]').forEach(i=>out.push(i.getAttribute('src')));
-  return Array.from(new Set(out));
+/* ---------- query + render ---------- */
+function selectedHandles(){
+  return $$('#accountsBox input[type="checkbox"]:checked').map(i => i.dataset.handle);
 }
-function extractLinksFromText(text){ return Array.from(new Set((text||'').match(URL_RE)||[])); }
+
+function uiParams(){
+  return {
+    q: $('#q').value.trim(),
+    hours: +$('#hours').value || 6,
+    minReposts: +$('#minReposts').value || 0,
+    minLikes: +$('#minLikes').value || 0,
+    limit: +$('#limit').value || 150,
+    includeReplies: $('#inclReplies').checked ? 1 : 0,
+    includeQuotes: $('#inclQuotes').checked ? 1 : 0,
+    excludeReposts: $('#exclReposts').checked ? 1 : 0,
+    nocache: $('#nocache').checked ? 1 : 0
+  };
+}
+
+function buildQuery(params, handles){
+  const p = new URLSearchParams(params);
+  if(handles.length) p.set('handles', handles.join(','));
+  return '/api/stream?' + p.toString();
+}
+
+function pill(href, label){
+  const a = document.createElement('a');
+  a.href = href; a.target = '_blank'; a.rel = 'noopener';
+  a.className = 'pill-btn'; a.textContent = label;
+  return a;
+}
+
+function linkify(text){
+  return text.replace(
+    /(https?:\/\/[^\s)]+)(\)?)/g,
+    (m,u,trail='') => `<a href="${u}" target="_blank" rel="noopener">${u}</a>${trail}`
+  );
+}
 
 function render(items){
-  const c=$('#results'); c.innerHTML='';
-  const frag=document.createDocumentFragment();
+  const box = $('#results'); box.innerHTML = '';
+  const previewLines = [];
 
-  items.forEach((it,i)=>{
-    const author = it.authorDisplay || it.authorHandle || '';
-    const profile = prof(it.authorHandle, it.authorDid);
-    const authorHTML = profile ? `<a href="${profile}" target="_blank" rel="noopener">${author}</a>` : author;
-    const bodyHTML = it.html ? it.html : linkify(it.text||'');
-    const moreLinks = Array.from(new Set([
-      ...extractLinksFromHtml(it.html||''),
-      ...extractLinksFromText(it.text||'')
-    ]));
-    const blueskyUrl = utm(it.url||'');
+  items.forEach(it=>{
+    const card = document.createElement('div');
+    card.className = 'card';
 
-    const el=document.createElement('div');
-    el.className='item';
-    el.innerHTML=`
-      <label style="display:flex;gap:10px;align-items:start;">
-        <input type="checkbox" data-idx="${i}"/>
-        <div style="flex:1">
-          <div class="meta">
-            <span>${authorHTML}</span>
-            ${it.authorHandle?`<span class="muted">${it.authorHandle}</span>`:''}
-            ${it.tsLocal?`<span class="muted">${it.tsLocal}</span>`:''}
-            ${typeof it.likeCount==='number'?`<span class="muted">❤ ${it.likeCount}</span>`:''}
-            ${typeof it.repostCount==='number'?`<span class="muted">↻ ${it.repostCount}</span>`:''}
-          </div>
-          <div>${bodyHTML}</div>
-          ${moreLinks.length?`<div class="links">Links: ${moreLinks.map(u=>`<a href="${u}" target="_blank" rel="noopener">${u}</a>`).join(' ')}</div>`:''}
-          ${blueskyUrl?`<div class="muted" style="margin-top:6px"><a href="${blueskyUrl}" target="_blank" rel="noopener">Open on Bluesky</a></div>`:''}
-        </div>
-      </label>`;
-    frag.appendChild(el);
-  });
+    const top = document.createElement('div');
+    top.className = 'top';
 
-  c.appendChild(frag);
-  c.addEventListener('change',e=>{ if(e.target.matches('input[type="checkbox"]')) updateSel(); }, {once:true});
-  updateSel();
-}
-function updateSel(){ $('#selCount').textContent = $$('#results input[type="checkbox"]:checked').length; }
-function selected(items){
-  const idx=new Set($$('#results input[type="checkbox"]:checked').map(i=>+i.dataset.idx));
-  return items.filter((_,i)=>idx.has(i));
-}
+    const av = document.createElement('img');
+    av.className = 'avatar';
+    av.src = it.authorAvatar || 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
+    av.alt = '';
+    top.appendChild(av);
 
-/* ============ copy formats ============ */
-function copyPlain(items){
-  const lines = items.map(it=>{
-    const author = it.authorDisplay || it.authorHandle || '';
-    const text = oneline(decode(it.text || stripTags(it.html) || ''));
-    const link = utm(it.url||'');
-    return `${author}: ${text}\n\n${link}`.trim();
-  });
-  const out = lines.join('\n\n');
-  navigator.clipboard.writeText(out);
-  $('#preview').value=out;
-}
-function toCSV(rows){
-  const esc=v=>`"${String(v??'').replace(/"/g,'""')}"`;
-  const head=['authorDisplay','authorHandle','tsLocal','likeCount','repostCount','url','text'];
-  const lines=[head.map(esc).join(',')];
-  rows.forEach(r=>lines.push([r.authorDisplay,r.authorHandle,r.tsLocal,r.likeCount,r.repostCount,utm(r.url||''),oneline(decode(r.text||stripTags(r.html)||''))].map(esc).join(',')));
-  return lines.join('\n');
-}
-function copyCSV(items){ const out=toCSV(items); navigator.clipboard.writeText(out); $('#preview').value=out; }
-function copyHTML(items){
-  const html = items.map(s=>{
-    const line1 = `<strong>${s.authorDisplay || s.authorHandle || ''}</strong> <span style="color:#667">${s.tsLocal || ''}</span>`;
-    const text = (s.html ? s.html : linkify(s.text||''));
-    const link = s.url ? ` <a href="${utm(s.url)}" target="_blank" rel="noopener">${utm(s.url)}</a>` : '';
-    return `<p>${line1}<br>${text}${link}</p>`;
-  }).join('\n');
-  navigator.clipboard.writeText(html); $('#preview').value=html;
-}
+    const who = document.createElement('div');
+    who.innerHTML = `
+      <div class="author"><a href="${prof(it.authorHandle||'')}" target="_blank" rel="noopener">${it.authorDisplay || it.authorHandle || '—'}</a></div>
+      <div class="handle muted">${it.authorHandle||''}</div>`;
+    top.appendChild(who);
 
-/* ============ fetching ============ */
-function isRepost(it){
-  if (it.isRepost === true) return true;
-  const ht=(it.html||'').replace(/<[^>]+>/g,' ').trim();
-  const tx=(it.text||'').trim();
-  if (/^\[?repost\b/i.test(ht) || /^\[?repost\b/i.test(tx)) return true;
-  return false;
-}
-async function fetchJSON(url){
-  const r=await fetch(url);
-  const ct=r.headers.get('content-type')||'';
-  if(!ct.includes('application/json')){
-    const text=await r.text();
-    throw new Error(`Request failed (${r.status}). Expected JSON, got: ${text.slice(0,120)}…`);
-  }
-  if(!r.ok) throw new Error(`Request failed (${r.status})`);
-  return r.json();
-}
-async function chunkFetch(params){
-  const qs = new URLSearchParams(params);
-  return fetchJSON('/api/stream?'+qs.toString());
-}
-function sortItems(arr, sort){
-  const s=sort||'desc';
-  if(s==='likes') arr.sort((a,b)=>(b.likeCount||0)-(a.likeCount||0));
-  else if(s==='reposts') arr.sort((a,b)=>(b.repostCount||0)-(a.repostCount||0));
-  else if(s==='asc') arr.sort((a,b)=> new Date(a.ts||a.tsLocal||0)-new Date(b.ts||b.tsLocal||0));
-  else arr.sort((a,b)=> new Date(b.ts||b.tsLocal||0)-new Date(a.ts||a.tsLocal||0));
-}
-async function mainBatch(authors,opt){
-  const CH=12, chunks=[]; for(let i=0;i<authors.length;i+=CH) chunks.push(authors.slice(i,i+CH));
-  const perChunkLimit = Math.max(120, Math.ceil((opt.limit*6)/chunks.length));
-  const reqs = chunks.map(list=> chunkFetch({
-    q:opt.q||'', hours:opt.hours||24, minReposts:opt.minReposts||0, minLikes:opt.minLikes||0,
-    includeReplies:opt.includeReplies?1:0, includeQuotes:opt.includeQuotes?1:0,
-    authors:list.join(','), limit:perChunkLimit, sort:opt.sort||'desc', nocache:opt.nocache?1:0
-  }));
-  const res = await Promise.all(reqs);
-  let all = res.flatMap(x=>Array.isArray(x.items)?x.items:[]);
-  if (opt.excludeReposts) all = all.filter(it=>!isRepost(it));
-  const seen=new Set, out=[];
-  for(const it of all){
-    const k = it.url || `${it.ts}|${it.authorHandle}|${(it.text||'').slice(0,80)}`;
-    if(!seen.has(k)){ seen.add(k); out.push(it); }
-  }
-  sortItems(out,opt.sort);
-  return out.slice(0,opt.limit||150);
-}
-async function gapFill(authors, got, opt){
-  const have=new Set(got.map(i=>i.authorHandle).filter(Boolean));
-  const missing = authors.filter(h=>!have.has(h));
-  if(!missing.length) return [];
-  const hours2=Math.max(+opt.hours||24, 48);
-  const perAuthor=Math.max(80, Math.ceil((opt.limit||150)/3));
-  const reqs = missing.map(h=> chunkFetch({
-    q:opt.q||'', hours:hours2, minReposts:opt.minReposts||0, minLikes:opt.minLikes||0,
-    includeReplies:opt.includeReplies?1:0, includeQuotes:opt.includeQuotes?1:0,
-    authors:h, limit:perAuthor, sort:opt.sort||'desc', nocache:opt.nocache?1:0
-  }).catch(()=>({items:[]})));
-  const res = await Promise.all(reqs);
-  let more = res.flatMap(x=>Array.isArray(x.items)?x.items:[]);
-  if(opt.excludeReposts) more = more.filter(it=>!isRepost(it));
-  return more;
-}
+    card.appendChild(top);
 
-let CURRENT=[];
-async function run(){
-  $('#err').textContent=''; $('#spin').classList.add('on');
-  try{
-    const authors = $$('#accountsBox input[type="checkbox"]:checked').map(i=>i.dataset.handle);
-    if(!authors.length){ render([]); CURRENT=[]; return; }
-    const opt = {
-      q:$('#q').value.trim(), hours:+$('#hours').value||24,
-      minReposts:+$('#minReposts').value||0, minLikes:+$('#minLikes').value||0,
-      includeReplies:$('#incReplies').checked, includeQuotes:$('#incQuotes').checked,
-      excludeReposts:$('#excReposts').checked, limit:+$('#limit').value||150,
-      sort:$('#sort').value, nocache:$('#nocache').checked
-    };
-    const primary = await mainBatch(authors,opt);
-    const extra    = await gapFill(authors, primary, opt);
-    const all=[...primary,...extra];
-    const seen=new Set, out=[];
-    for(const it of all){
-      const k = it.url || `${it.ts}|${it.authorHandle}|${(it.text||'').slice(0,80)}`;
-      if(!seen.has(k)){ seen.add(k); out.push(it); }
+    const text = document.createElement('div');
+    text.innerHTML = linkify( (it.text||'').trim() );
+    card.appendChild(text);
+
+    // pills
+    const pills = document.createElement('div');
+    pills.className = 'pills';
+    if(it.url) pills.appendChild(pill(it.url, 'Open on Bluesky'));
+    // always expose media/video links if we can
+    const urls = getAllUrls(it.text||'').filter(isVideoLink);
+    if(urls.length){
+      urls.slice(0,3).forEach(u => pills.appendChild(pill(u, 'Video')));
     }
-    sortItems(out,opt.sort);
-    CURRENT = out.slice(0,opt.limit||150);
-    render(CURRENT);
-  }catch(e){ $('#err').textContent=e.message||'Error'; render([]); CURRENT=[]; }
-  finally{ $('#spin').classList.remove('on'); }
+    if(pills.childNodes.length) card.appendChild(pills);
+
+    // try thumbnail
+    if(it.mediaUrl){
+      const img = document.createElement('img');
+      img.className = 'thumb';
+      img.loading = 'lazy';
+      img.src = it.mediaUrl;
+      img.alt = '';
+      card.appendChild(img);
+    }
+
+    box.appendChild(card);
+
+    // copy/plain text line (requested format)
+    const name = (it.authorDisplay || it.authorHandle || '').trim();
+    const body = (it.text||'').trim().replace(/\s+\n/g,'\n');
+    const url = it.url ? utm(it.url) : '';
+    const one = `${name}: ${body}\n\n${url}`.trim();
+    previewLines.push(one);
+  });
+
+  $('#preview').textContent = previewLines.join('\n\n');
 }
 
-/* ============ init ============ */
-async function init(){
+function getAllUrls(s){
+  const out = [];
+  const r = /(https?:\/\/[^\s)]+)(\)?)/g; let m;
+  while((m = r.exec(s))) out.push(m[1]);
+  return out;
+}
+
+async function runSearch(auto=false){
+  const handles = selectedHandles();
+  const params = uiParams();
+
+  if(!handles.length){
+    $('#status').textContent = 'Select at least one account';
+    return;
+  }
+
+  $('#btnSearch').disabled = true;
+  $('#status').textContent = 'Loading…';
+
+  try{
+    const url = buildQuery(params, handles);
+    const r = await fetch(url, {cache: 'no-store'});
+    if(!r.ok){
+      const text = await r.text();
+      throw new Error(`API ${r.status} ${r.statusText}: ${text.slice(0,120)}`);
+    }
+    const {items=[]} = await r.json(); // expected shape from your /api/stream
+    // filter reposts client-side too as safety
+    const filtered = params.excludeReposts ? items.filter(it => !it.isRepost) : items;
+    render(filtered);
+    $('#status').textContent = `${filtered.length} results`;
+  }catch(err){
+    $('#status').textContent = 'Error';
+    const msg = String(err.message||err);
+    const box = $('#results'); box.innerHTML =
+      `<div class="card"><div class="muted">Error: ${escapeHtml(msg)}</div></div>`;
+  }finally{
+    $('#btnSearch').disabled = false;
+  }
+}
+
+function escapeHtml(s){return s.replace(/[&<>"]/g,c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]))}
+
+/* ---------- copy buttons ---------- */
+function collectForCopy(){
+  return $('#preview').textContent.trim();
+}
+$('#copyTxt').addEventListener('click', async ()=>{
+  const s = collectForCopy();
+  await navigator.clipboard.writeText(s);
+  flash('Copied plain text');
+});
+$('#copyCsv').addEventListener('click', async ()=>{
+  const lines = $('#preview').textContent.trim().split('\n\n').map(b=>{
+    const [first,...rest] = b.split('\n');
+    const url = rest.at(-1)||'';
+    const text = rest.slice(0,-1).join(' ').trim();
+    const m = first.match(/^([^:]+):\s*(.*)$/);
+    const name = m ? m[1] : '';
+    const body = m ? m[2] : first;
+    return `"${name.replace(/"/g,'""')}","${(body + (text?' '+text:'' )).replace(/"/g,'""')}","${url}"`;
+  });
+  const csv = 'name,text,url\n' + lines.join('\n');
+  await navigator.clipboard.writeText(csv);
+  flash('CSV copied');
+});
+$('#copyHtml').addEventListener('click', async ()=>{
+  const blocks = $('#preview').textContent.trim().split('\n\n').map(b=>{
+    const [first,...rest] = b.split('\n');
+    const url = rest.at(-1)||'';
+    const body = rest.slice(0,-1).join(' ').trim();
+    const m = first.match(/^([^:]+):\s*(.*)$/);
+    const name = m ? m[1] : first;
+    const text = m ? m[2] : body;
+    return `<p><strong>${escapeHtml(name)}:</strong> ${escapeHtml(text)}</p><p><a href="${escapeHtml(url)}">${escapeHtml(url)}</a></p>`;
+  });
+  const html = blocks.join('\n');
+  await navigator.clipboard.writeText(html);
+  flash('HTML copied');
+});
+
+function flash(msg){
+  const s = $('#status');
+  const old = s.textContent;
+  s.textContent = msg;
+  setTimeout(()=>s.textContent = old, 1500);
+}
+
+/* ---------- buttons & boot ---------- */
+$('#btnAll').addEventListener('click', ()=>{
+  $$('#accountsBox input[type="checkbox"]').forEach(i=>i.checked=true);
+  const list = $$('#accountsBox input[type="checkbox"]:checked').map(i=>i.dataset.handle);
+  saveLocal(list); saveBlob(list);
+});
+$('#btnNone').addEventListener('click', ()=>{
+  $$('#accountsBox input[type="checkbox"]').forEach(i=>i.checked=false);
+  saveLocal([]); saveBlob([]);
+});
+$('#btnSearch').addEventListener('click', ()=>runSearch(false));
+
+(async function init(){
   await buildAccountsUI();
-
-  $('#allBtn').addEventListener('click',()=>{
-    $$('#accountsBox input[type="checkbox"]').forEach(i=>i.checked=true);
-    const list=$$('#accountsBox input[type="checkbox"]:checked').map(i=>i.dataset.handle);
-    saveLocal(list); saveBlob(list);
-  });
-  $('#noneBtn').addEventListener('click',()=>{
-    $$('#accountsBox input[type="checkbox"]').forEach(i=>i.checked=false);
-    saveLocal([]); saveBlob([]);
-  });
-
-  $('#searchBtn').addEventListener('click',run);
-  $('#copyTxt').addEventListener('click',()=>copyPlain(selected(CURRENT)));
-  $('#copyCsv').addEventListener('click',()=>copyCSV(selected(CURRENT)));
-  $('#copyHtml').addEventListener('click',()=>copyHTML(selected(CURRENT)));
-
-  // Auto-run on first load (ALL reporters are auto-enabled when blob/local is empty)
-  await delay(40);
-  run();
-}
-init();
+  // auto-run on first load, always
+  runSearch(true);
+})();
 </script>
 </body>
 </html>
