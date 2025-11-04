@@ -1,374 +1,381 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Bluesky Watchlist</title>
-<style>
-  :root { --bg:#fafafa; --fg:#111; --muted:#777; --border:#e5e5e5; --accent:#0a5; }
-  body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial; background:#fff; color:var(--fg); margin:0; }
-  header { padding:16px 20px; border-bottom:1px solid var(--border); background:var(--bg); }
-  h1 { font-size:20px; margin:0; }
-  main { padding:16px 20px; display:grid; gap:16px; grid-template-columns: 1fr 320px; }
-  @media (max-width: 1000px){ main { grid-template-columns: 1fr; } }
-
-  .panel { border:1px solid var(--border); border-radius:12px; padding:12px; background:#fff; }
-  .controls { display:grid; gap:8px; grid-template-columns: repeat(6, minmax(0,1fr)); align-items:end; }
-  .controls .wide { grid-column: span 2; }
-  label { font-size:12px; color:var(--muted); }
-  input, select, button, textarea { width:100%; padding:8px; border-radius:8px; border:1px solid var(--border); font:inherit; }
-  input[type="checkbox"]{ width:auto; }
-  button { background:var(--accent); color:#fff; border:none; cursor:pointer; }
-  button.muted { background:#eee; color:#333; }
-  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-
-  .accounts { display:flex; gap:8px; flex-wrap:wrap; max-height:120px; overflow:auto; border:1px solid var(--border); border-radius:10px; padding:8px; }
-  .tag { border:1px solid var(--border); border-radius:999px; padding:4px 10px; font-size:12px; background:#fff; white-space:nowrap; }
-  .tag input { vertical-align:middle; margin-right:6px; }
-
-  .results { display:flex; flex-direction:column; gap:12px; }
-  .card { border:1px solid var(--border); border-radius:12px; padding:12px; display:grid; gap:8px; grid-template-columns: 28px 1fr; }
-  .meta { color:var(--muted); font-size:12px; }
-  .text { line-height:1.45; }
-  .text a { color:var(--accent); text-decoration:none; }
-  .select-col { display:flex; align-items:start; padding-top:3px; }
-  .empty { color:var(--muted); padding:20px; text-align:center; border:1px dashed var(--border); border-radius:10px; }
-
-  .side { display:flex; flex-direction:column; gap:12px; }
-  .side .btns { display:flex; gap:8px; flex-wrap:wrap; }
-  textarea { width:100%; min-height:220px; }
-</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Bluesky Watchlist</title>
+  <style>
+    :root { --bg:#0b1220; --panel:#121a2a; --muted:#9fb0c9; --text:#e6eefb; --accent:#27c07d; --chip:#1a253b; --chip-on:#223251; --border:#24314a; }
+    html,body{height:100%}
+    body{margin:0;background:var(--bg);color:var(--text);font:14px/1.4 system-ui,Segoe UI,Roboto,Helvetica,Arial}
+    h1{font-weight:600;font-size:18px;margin:0 0 10px}
+    .wrap{max-width:1200px;margin:24px auto;padding:0 16px}
+    .grid{display:grid;grid-template-columns:1fr 350px;gap:16px}
+    .card{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:14px}
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .row > *{min-height:36px}
+    input[type="number"],input[type="text"],select{background:#0e1627;border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:8px}
+    input[type="checkbox"]{transform:translateY(1px)}
+    button{background:var(--accent);color:#072114;border:0;border-radius:8px;padding:9px 14px;font-weight:600;cursor:pointer}
+    button.secondary{background:#1f2b42;color:var(--text)}
+    .chips{max-height:200px;overflow:auto;border:1px solid var(--border);border-radius:10px;padding:10px;margin-top:8px}
+    .chip{display:inline-flex;align-items:center;gap:8px;background:var(--chip);border:1px solid var(--border);color:var(--text);border-radius:999px;padding:6px 10px;margin:6px 6px 0 0;white-space:nowrap}
+    .chip input{accent-color:var(--accent)}
+    .muted{color:var(--muted)}
+    .results{display:flex;flex-direction:column;gap:12px;margin-top:10px}
+    .item{border:1px solid var(--border);border-radius:10px;padding:12px;background:#0f182b}
+    .item .meta{font-size:12px;color:var(--muted);margin-bottom:6px;display:flex;gap:8px;flex-wrap:wrap}
+    .item img{max-width:100%;border-radius:8px;margin-top:8px}
+    .right-sticky{position:sticky;top:12px;height:calc(100dvh - 48px)}
+    .right-sticky .card{height:100%;display:flex;flex-direction:column}
+    .right-sticky .card textarea{flex:1;min-height:200px;background:#0e1627;border:1px solid var(--border);border-radius:10px;color:var(--text);padding:10px;resize:vertical}
+    .pill{display:inline-flex;background:#0f2434;border:1px solid var(--border);border-radius:999px;padding:4px 8px;font-size:12px;margin-right:6px}
+    .spinner{display:none}
+    .spinner.on{display:inline-block;inline-size:14px;block-size:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .error{color:#ff8b8b}
+  </style>
 </head>
 <body>
-  <header>
+  <div class="wrap">
     <h1>Bluesky Watchlist</h1>
-  </header>
-
-  <main>
-    <!-- LEFT: controls + results -->
-    <section class="panel">
-      <div class="controls">
-        <div class="wide">
-          <label>Search topic (optional)</label>
-          <input id="q" placeholder="(optional filter in post text)" />
+    <div class="grid">
+      <div class="card">
+        <div class="row">
+          <input id="q" type="text" placeholder="(optional filter in post text)" style="flex:1 1 320px">
+          <label>Lookback (hours) <input id="hours" type="number" min="1" value="6" style="width:80px"></label>
+          <label>Min reposts <input id="minReposts" type="number" min="0" value="0" style="width:70px"></label>
+          <label>Min likes <input id="minLikes" type="number" min="0" value="0" style="width:70px"></label>
+          <label>Limit (total) <input id="limit" type="number" min="1" value="60" style="width:80px"></label>
         </div>
-        <div>
-          <label>Lookback (hours)</label>
-          <input id="hours" type="number" min="1" value="6" />
-        </div>
-        <div>
-          <label>Min reposts</label>
-          <input id="minReposts" type="number" min="0" value="0" />
-        </div>
-        <div>
-          <label>Min likes</label>
-          <input id="minLikes" type="number" min="0" value="0" />
-        </div>
-        <div>
-          <label>Limit (total)</label>
-          <input id="limit" type="number" min="1" max="200" value="60" />
-        </div>
-        <div>
-          <label>Sort by</label>
+        <div class="row" style="margin-top:8px">
           <select id="sort">
-            <option value="recent">Recent (desc)</option>
-            <option value="reposts">Reposts (desc)</option>
-            <option value="likes">Likes (desc)</option>
-            <option value="total">Likes+Reposts (desc)</option>
+            <option value="desc">Recent (desc)</option>
+            <option value="asc">Oldest (asc)</option>
+            <option value="likes">Most likes</option>
+            <option value="reposts">Most reposts</option>
           </select>
+          <label><input id="incReplies" type="checkbox"> Include replies</label>
+          <label><input id="nocache" type="checkbox"> nocache</label>
+          <button id="searchBtn">Search <span id="spin" class="spinner"></span></button>
+          <button id="allBtn" class="secondary">All</button>
+          <button id="noneBtn" class="secondary">None</button>
+          <span id="err" class="error" role="alert"></span>
         </div>
+
+        <div class="muted" style="margin-top:10px">Accounts (from <code>reporters.csv</code>)</div>
+        <div id="accountsBox" class="chips"></div>
+
+        <div id="results" class="results"></div>
       </div>
 
-      <div class="row" style="margin-top:12px">
-        <span class="row">
-          <label class="row"><input type="checkbox" id="includeReplies" /> Include replies</label>
-          <label class="row"><input type="checkbox" id="nocache" /> nocache</label>
-        </span>
-        <span class="row">
-          <button id="btnSearch">Search</button>
-          <button class="muted" id="btnAll">All</button>
-          <button class="muted" id="btnNone">None</button>
-        </span>
-      </div>
-
-      <div style="margin-top:8px">
-        <label>Accounts (from reporters.csv)</label>
-        <div id="accounts" class="accounts"></div>
-      </div>
-
-      <div class="results" id="results" style="margin-top:12px"></div>
-    </section>
-
-    <!-- RIGHT: selection & exports -->
-    <aside class="side">
-      <section class="panel">
-        <div class="row" style="justify-content:space-between; align-items:center">
-          <strong>Selected <span id="selCount">0</span></strong>
-          <label class="row" title="Prioritize CSV list first in display">
-            <input type="checkbox" id="prioFirst" checked /> Priority first
-          </label>
+      <div class="right-sticky">
+        <div class="card">
+          <div class="row" style="justify-content:space-between">
+            <div class="muted">Selected <span id="selCount">0</span></div>
+            <label class="muted"><input id="priorityFirst" type="checkbox" checked> Priority first</label>
+          </div>
+          <div class="row" style="margin-top:8px">
+            <button id="copyTxt">Copy plain text</button>
+            <button id="copyCsv" class="secondary">Copy CSV</button>
+            <button id="copyHtml" class="secondary">Copy publisher-safe HTML</button>
+          </div>
+          <div class="muted" style="margin-top:10px">Preview of copied output…</div>
+          <textarea id="preview" spellcheck="false"></textarea>
         </div>
-        <div class="btns" style="margin-top:8px">
-          <button id="copyText">Copy plain text</button>
-          <button class="muted" id="copyCsv">Copy CSV</button>
-          <button class="muted" id="copyHtml">Copy publisher-safe HTML</button>
-        </div>
-        <textarea id="preview" placeholder="Preview of copied output..."></textarea>
-      </section>
-    </aside>
-  </main>
+      </div>
+    </div>
+  </div>
 
-<script>
-const els = {
-  q: byId('q'),
-  hours: byId('hours'),
-  minReposts: byId('minReposts'),
-  minLikes: byId('minLikes'),
-  limit: byId('limit'),
-  sort: byId('sort'),
-  includeReplies: byId('includeReplies'),
-  nocache: byId('nocache'),
-  btnSearch: byId('btnSearch'),
-  btnAll: byId('btnAll'),
-  btnNone: byId('btnNone'),
-  accounts: byId('accounts'),
-  results: byId('results'),
-  selCount: byId('selCount'),
-  prioFirst: byId('prioFirst'),
-  copyText: byId('copyText'),
-  copyCsv: byId('copyCsv'),
-  copyHtml: byId('copyHtml'),
-  preview: byId('preview'),
-};
+  <script>
+    // ---------- Utility ----------
+    const $ = s => document.querySelector(s);
+    const $$ = s => Array.from(document.querySelectorAll(s));
+    const delay = ms => new Promise(r => setTimeout(r, ms));
 
-let ACCOUNTS = [];       // [{handle, name, priorityIndex}]
-let RESULTS = [];        // API results
-let SELECTED = new Set();// urls selected
-
-// 1) Load reporters.csv
-initAccounts();
-
-async function initAccounts(){
-  try {
-    const r = await fetch('/reporters.csv?ts=' + Date.now());
-    const csv = await r.text();
-    const lines = csv.split(/\r?\n/).filter(Boolean);
-    const hdr = lines.shift() || '';
-    const cols = hdr.split(',').map(s => s.trim().toLowerCase());
-
-    const data = [];
-    lines.forEach((line, i) => {
-      const parts = safeSplitCsv(line, cols.length);
-      if (!parts.length) return;
-      const obj = Object.fromEntries(parts.map((v, i) => [cols[i] || `c${i}`, v.trim()]));
-      let handle = '';
-      // heuristics: prefer a column that looks like a handle or url
-      for (const k of Object.keys(obj)) {
-        const v = obj[k];
-        if (!v) continue;
-        if (v.includes('@') && v.endsWith('.bsky.social')) handle = v.replace(/^@/, '');
-        else if (v.includes('@') && !v.includes(' ')) handle = v.replace(/^@/,'');
-        else if (/bsky\.app\/profile\//.test(v)) handle = v.split('/profile/')[1].split(/[/?#]/)[0];
-      }
-      if (!handle) return;
-      const name = obj.name || obj.display || obj.author || handle;
-      data.push({ handle, name, priorityIndex: data.length });
-    });
-    ACCOUNTS = data;
-    renderAccounts();
-  } catch (e) {
-    console.error('load reporters.csv', e);
-    ACCOUNTS = [];
-    renderAccounts();
-  }
-}
-
-function renderAccounts(){
-  els.accounts.innerHTML = '';
-  if (!ACCOUNTS.length) {
-    els.accounts.innerHTML = `<div class="empty">reporters.csv not found or empty</div>`;
-    return;
-  }
-  for (const a of ACCOUNTS) {
-    const tag = document.createElement('label');
-    tag.className = 'tag';
-    tag.innerHTML = `<input type="checkbox" data-h="${a.handle}"/> @${a.handle}`;
-    els.accounts.appendChild(tag);
-  }
-}
-
-els.btnAll.onclick = () => els.accounts.querySelectorAll('input').forEach(i => i.checked = true);
-els.btnNone.onclick = () => els.accounts.querySelectorAll('input').forEach(i => i.checked = false);
-
-// 2) Search
-els.btnSearch.onclick = runSearch;
-
-async function runSearch(){
-  const chosen = [...els.accounts.querySelectorAll('input:checked')].map(i => i.dataset.h);
-  if (!chosen.length) {
-    els.results.innerHTML = `<div class="empty">Select at least one account.</div>`;
-    return;
-  }
-
-  const params = new URLSearchParams({
-    handles: chosen.join(','),
-    hours: els.hours.value || '6',
-    minReposts: els.minReposts.value || '0',
-    minLikes: els.minLikes.value || '0',
-    limit: els.limit.value || '60',
-    sort: els.sort.value || 'recent',
-    includeReplies: els.includeReplies.checked ? '1' : '0'
-  });
-  if (els.nocache.checked) params.set('nocache', '1');
-
-  els.results.innerHTML = `<div class="empty">Loading…</div>`;
-  SELECTED.clear(); updateSelCount();
-
-  try {
-    const r = await fetch(`/api/watchlist?${params.toString()}`);
-    const j = await r.json();
-    if (!j.items || !j.items.length) {
-      els.results.innerHTML = `<div class="empty">No results for those filters.</div>`;
-      RESULTS = [];
-      return;
+    // ---------- Persistent enabled accounts (Blobs with localStorage fallback) ----------
+    const ACCOUNTS_BLOB_KEY = 'watchlist-accounts';
+    async function loadEnabledFromServer() {
+      try {
+        const res = await fetch('/api/watchlist-accounts');
+        if (!res.ok) return null;
+        const ct = res.headers.get('content-type') || '';
+        if (!ct.includes('application/json')) return null;
+        const json = await res.json();
+        return Array.isArray(json.enabled) ? json.enabled : null;
+      } catch { return null; }
+    }
+    async function saveEnabledToServer(enabled) {
+      try {
+        await fetch('/api/watchlist-accounts', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ enabled })
+        });
+      } catch {}
+    }
+    function loadEnabledLocal() {
+      try {
+        const x = localStorage.getItem(ACCOUNTS_BLOB_KEY);
+        return x ? JSON.parse(x) : null;
+      } catch { return null; }
+    }
+    function saveEnabledLocal(enabled) {
+      try { localStorage.setItem(ACCOUNTS_BLOB_KEY, JSON.stringify(enabled)); } catch {}
     }
 
-    // optional client-side text filter
-    const q = (els.q.value || '').trim().toLowerCase();
-    let items = j.items;
-    if (q) items = items.filter(p => p.text.toLowerCase().includes(q));
-
-    // priority-first reorder (CSV order first) if enabled
-    if (els.prioFirst.checked) {
-      const rank = new Map(ACCOUNTS.map((a,i) => [a.handle.toLowerCase(), i]));
-      items.sort((a,b) => {
-        const ra = rank.get(a.authorHandle.toLowerCase()) ?? 9999;
-        const rb = rank.get(b.authorHandle.toLowerCase()) ?? 9999;
-        if (ra !== rb) return ra - rb;
-        return b.ts - a.ts;
+    // ---------- Reporters CSV ----------
+    async function fetchReporters() {
+      const res = await fetch('/reporters.csv?_=' + Date.now());
+      const txt = await res.text();
+      // CSV: handle,priority (optional priority=true)
+      const lines = txt.trim().split(/\r?\n/).filter(Boolean);
+      return lines.map((line) => {
+        const [handleRaw, priRaw] = line.split(',').map(s => s.trim());
+        const handle = handleRaw.startsWith('@') ? handleRaw : '@' + handleRaw;
+        const priority = (priRaw || '').toLowerCase() === 'true';
+        return { handle, priority };
       });
     }
 
-    RESULTS = items;
-    renderResults();
-  } catch (e) {
-    console.error(e);
-    els.results.innerHTML = `<div class="empty">Error: ${e.message || e}</div>`;
-  }
-}
+    // ---------- Build account chips ----------
+    async function buildAccountsUI() {
+      const reporters = await fetchReporters();
+      const box = $('#accountsBox');
+      box.innerHTML = '';
+      const enabledServer = await loadEnabledFromServer();
+      const enabledLocal = loadEnabledLocal();
+      let enabled = enabledServer || enabledLocal || reporters.map(r => r.handle); // default: all
 
-function renderResults(){
-  if (!RESULTS.length) {
-    els.results.innerHTML = `<div class="empty">No matches.</div>`;
-    return;
-  }
-  els.results.innerHTML = '';
-  for (const p of RESULTS) {
-    const id = p.url; // unique enough
-    const card = document.createElement('div');
-    card.className = 'card';
-    card.innerHTML = `
-      <div class="select-col"><input type="checkbox" data-id="${id}"></div>
-      <div>
-        <div class="meta">
-          <strong>${esc(p.authorDisplay)}</strong> (@${esc(p.authorHandle)}) ·
-          <time>${esc(p.tsLocal)}</time> ·
-          ❤ ${p.likeCount} · 🔁 ${p.repostCount} ·
-          <a href="${p.url}" target="_blank" rel="ugc nofollow noopener">Open</a>
-        </div>
-        <div class="text">${linkify(esc(p.text)).replace(/\n/g,'<br>')}</div>
-      </div>`;
-    els.results.appendChild(card);
-    card.querySelector('input').onchange = (e) => {
-      if (e.target.checked) SELECTED.add(id); else SELECTED.delete(id);
-      updateSelCount();
-      buildPreview();
-    };
-  }
-}
+      reporters.forEach((r, idx) => {
+        const id = 'acc_' + idx;
+        const chip = document.createElement('label');
+        chip.className = 'chip';
+        chip.innerHTML = `
+          <input type="checkbox" id="${id}" data-handle="${r.handle}" ${enabled.includes(r.handle) ? 'checked' : ''}/>
+          <span>${r.handle}</span>
+          ${r.priority ? '<span class="pill">priority</span>' : ''}
+        `;
+        box.appendChild(chip);
+      });
 
-function updateSelCount(){ els.selCount.textContent = String(SELECTED.size); }
+      // Persist selection on change
+      box.addEventListener('change', () => {
+        const list = $$('#accountsBox input[type="checkbox"]:checked').map(i => i.dataset.handle);
+        saveEnabledLocal(list);
+        saveEnabledToServer(list); // best effort
+      });
 
-// 3) Export buttons
-els.copyText.onclick = () => copy(buildPlainText());
-els.copyCsv.onclick  = () => copy(buildCsv());
-els.copyHtml.onclick = () => copy(buildHtml());
+      return reporters;
+    }
 
-function buildPlainText(){
-  const rows = [];
-  for (const p of RESULTS) {
-    if (!SELECTED.has(p.url)) continue;
-    rows.push(`${p.authorDisplay} (@${p.authorHandle}) — ${p.tsLocal}
-${p.text}
+    // ---------- Results selection & copy ----------
+    function updateSelectedCounts() {
+      const n = $$('#results input[type="checkbox"]:checked').length;
+      $('#selCount').textContent = n;
+    }
+    function renderItems(items) {
+      const results = $('#results');
+      results.innerHTML = '';
+      const frag = document.createDocumentFragment();
 
-${p.url}
-— — —`);
-  }
-  const out = rows.join('\n');
-  els.preview.value = out;
-  return out;
-}
+      items.forEach((it, i) => {
+        const el = document.createElement('div');
+        el.className = 'item';
+        el.innerHTML = `
+          <label style="display:flex;gap:10px;align-items:start;">
+            <input type="checkbox" data-idx="${i}" />
+            <div style="flex:1">
+              <div class="meta">
+                <span>${it.authorDisplay || it.authorHandle || ''}</span>
+                ${it.authorHandle ? `<span class="muted">${it.authorHandle}</span>` : ''}
+                ${it.tsLocal ? `<span class="muted">${it.tsLocal}</span>` : ''}
+                ${typeof it.likeCount === 'number' ? `<span class="muted">❤ ${it.likeCount}</span>` : ''}
+                ${typeof it.repostCount === 'number' ? `<span class="muted">↻ ${it.repostCount}</span>` : ''}
+              </div>
+              <div>${it.html || it.text || ''}</div>
+              ${it.mediaUrl ? `<img src="${it.mediaUrl}" loading="lazy">` : ''}
+              ${it.url ? `<div class="muted" style="margin-top:6px"><a href="${it.url}" target="_blank" rel="noopener">Open on Bluesky</a></div>` : ''}
+            </div>
+          </label>
+        `;
+        frag.appendChild(el);
+      });
 
-function buildCsv(){
-  const rows = [['author','handle','timestamp','likes','reposts','url','text']];
-  for (const p of RESULTS) {
-    if (!SELECTED.has(p.url)) continue;
-    rows.push([p.authorDisplay, p.authorHandle, p.tsLocal, p.likeCount, p.repostCount, p.url, p.text.replace(/\n/g,' ')]);
-  }
-  const out = rows.map(r => r.map(csvEscape).join(',')).join('\n');
-  els.preview.value = out;
-  return out;
-}
+      results.appendChild(frag);
+      results.addEventListener('change', (e) => {
+        if (e.target.matches('input[type="checkbox"]')) updateSelectedCounts();
+      }, { once: true }); // attach once
+      updateSelectedCounts();
+    }
 
-function buildHtml(){
-  const blocks = [];
-  for (const p of RESULTS) {
-    if (!SELECTED.has(p.url)) continue;
-    const excerpt = esc(p.text).slice(0, 200);
-    blocks.push(`<article class="hh-reaction">
-<header class="hh-reaction-hd"><a href="https://bsky.app/profile/${enc(p.authorHandle)}" rel="ugc nofollow noopener" target="_blank">${esc(p.authorDisplay)} (@${esc(p.authorHandle)})</a> · <time>${esc(p.tsLocal)}</time></header>
-<blockquote>${esc(excerpt)}… <a href="${p.url}" rel="ugc nofollow noopener" target="_blank">Open on Bluesky</a></blockquote>
-</article>`);
-  }
-  const out = `<section class="hh-reactions" aria-label="Bluesky reactions">
-${blocks.join('\n')}
-</section>`;
-  els.preview.value = out;
-  return out;
-}
+    function collectSelected(items) {
+      const idxs = new Set($$('#results input[type="checkbox"]:checked').map(i => +i.dataset.idx));
+      return items.filter((_, i) => idxs.has(i));
+    }
 
-function buildPreview(){ els.preview.value = buildPlainText(); }
+    function copyPlain(selected) {
+      const lines = selected.map(s => `• ${s.authorDisplay || s.authorHandle || ''} — ${s.text?.replace(/\s+/g, ' ').trim() || ''}\n${s.url || ''}`);
+      const out = lines.join('\n\n');
+      navigator.clipboard.writeText(out);
+      $('#preview').value = out;
+    }
 
-function copy(text){
-  navigator.clipboard.writeText(text).then(()=>{},()=>{});
-}
+    function toCSV(rows) {
+      const esc = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+      const headers = ['authorDisplay','authorHandle','tsLocal','likeCount','repostCount','url','text'];
+      const lines = [headers.map(esc).join(',')];
+      rows.forEach(r => {
+        lines.push([
+          r.authorDisplay, r.authorHandle, r.tsLocal, r.likeCount, r.repostCount, r.url, (r.text || '').replace(/\s+/g,' ').trim()
+        ].map(esc).join(','));
+      });
+      return lines.join('\n');
+    }
 
-// utils
-function byId(id){ return document.getElementById(id); }
-function esc(s){ return String(s).replace(/[&<>"]/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[m])); }
-function enc(s){ return encodeURIComponent(s); }
-function linkify(s){
-  return s.replace(/(https?:\/\/[^\s]+)/g, (m)=>`<a href="${m}" target="_blank" rel="ugc nofollow noopener">${m}</a>`);
-}
-function csvEscape(s){ s = String(s ?? ''); if (/[",\n]/.test(s)) return '"' + s.replace(/"/g,'""') + '"'; return s; }
+    function copyCSV(selected) {
+      const out = toCSV(selected);
+      navigator.clipboard.writeText(out);
+      $('#preview').value = out;
+    }
 
-// naive CSV split that respects simple quoted fields
-function safeSplitCsv(line, want){
-  const out = [];
-  let cur = '';
-  let inQ = false;
-  for (let i=0;i<line.length;i++){
-    const c = line[i];
-    if (c === '"'){
-      if (inQ && line[i+1] === '"'){ cur += '"'; i++; }
-      else inQ = !inQ;
-    } else if (c === ',' && !inQ){ out.push(cur); cur=''; }
-    else cur += c;
-  }
-  out.push(cur);
-  while (out.length < want) out.push('');
-  return out;
-}
-</script>
+    function copyHTML(selected) {
+      // Simple publisher-safe list (no embeds)
+      const html = selected.map(s => {
+        const line1 = `<strong>${s.authorDisplay || s.authorHandle || ''}</strong> <span style="color:#667">${s.tsLocal || ''}</span>`;
+        const text = (s.text || '').replace(/\n/g,'<br>');
+        const link = s.url ? `<div><a href="${s.url}" target="_blank" rel="noopener">${s.url}</a></div>` : '';
+        return `<p>${line1}<br>${text}${link}</p>`;
+      }).join('\n');
+      navigator.clipboard.writeText(html);
+      $('#preview').value = html;
+    }
+
+    // ---------- Stream batching (fix for long URLs) ----------
+    async function fetchStreamChunk(params) {
+      // GET /api/stream with short query
+      const usp = new URLSearchParams(params);
+      const res = await fetch('/api/stream?' + usp.toString());
+      const ct = res.headers.get('content-type') || '';
+      if (!res.ok || !ct.includes('application/json')) {
+        const text = await res.text();
+        throw new Error(`Stream error (${res.status}): ${text.slice(0,200)}`);
+      }
+      return res.json();
+    }
+
+    async function runBatchedStream(allAuthors, { q, hours, minReposts, minLikes, includeReplies, includeQuotes, limit, sort, nocache, priorityFirst }) {
+      // Chunk authors to keep URL short (about 20 handles per call is safe)
+      const CHUNK = 20;
+      const chunks = [];
+      for (let i=0; i<allAuthors.length; i+=CHUNK) chunks.push(allAuthors.slice(i,i+CHUNK));
+
+      const perChunkLimit = Math.max(10, Math.ceil((limit || 60) / chunks.length)); // rough split
+
+      const reqs = chunks.map(chunk => fetchStreamChunk({
+        q: q || '',
+        hours: hours || 6,
+        minReposts: minReposts || 0,
+        minLikes: minLikes || 0,
+        includeReplies: includeReplies ? 1 : 0,
+        includeQuotes: includeQuotes ? 1 : 0,
+        authors: chunk.join(','),
+        limit: perChunkLimit,
+        sort: sort || 'desc',
+        nocache: nocache ? 1 : 0,
+        priorityFirst: priorityFirst ? 1 : 0
+      }));
+
+      const results = await Promise.all(reqs);
+      // Each response is assumed {items:[...]}
+      const items = results.flatMap(r => Array.isArray(r.items) ? r.items : []);
+
+      // De-dupe by url (or ts+handle fallback)
+      const seen = new Set();
+      const deduped = [];
+      for (const it of items) {
+        const key = it.url || `${it.ts}|${it.authorHandle}`;
+        if (!seen.has(key)) { seen.add(key); deduped.push(it); }
+      }
+
+      // Sort
+      const s = (sort || 'desc');
+      if (s === 'likes') deduped.sort((a,b)=>(b.likeCount||0)-(a.likeCount||0));
+      else if (s === 'reposts') deduped.sort((a,b)=>(b.repostCount||0)-(a.repostCount||0));
+      else if (s === 'asc') deduped.sort((a,b)=> new Date(a.ts||a.tsLocal||0) - new Date(b.ts||b.tsLocal||0));
+      else deduped.sort((a,b)=> new Date(b.ts||b.tsLocal||0) - new Date(a.ts||a.tsLocal||0));
+
+      // Final slice
+      return deduped.slice(0, limit || 60);
+    }
+
+    // ---------- Wire up UI ----------
+    let currentItems = [];
+
+    async function runSearch(reporters) {
+      $('#err').textContent = '';
+      $('#spin').classList.add('on');
+      try {
+        const q = $('#q').value.trim();
+        const hours = +$('#hours').value || 6;
+        const minReposts = +$('#minReposts').value || 0;
+        const minLikes = +$('#minLikes').value || 0;
+        const limit = +$('#limit').value || 60;
+        const sort = $('#sort').value;
+        const includeReplies = $('#incReplies').checked;
+        const includeQuotes = false;
+        const nocache = $('#nocache').checked;
+        const priorityFirst = $('#priorityFirst').checked;
+
+        const selectedAuthors = $$('#accountsBox input[type="checkbox"]:checked').map(i => i.dataset.handle);
+        if (selectedAuthors.length === 0) {
+          renderItems([]);
+          currentItems = [];
+          return;
+        }
+
+        // batch (fix long URL)
+        const items = await runBatchedStream(selectedAuthors, {
+          q, hours, minReposts, minLikes, includeReplies, includeQuotes, limit, sort, nocache, priorityFirst
+        });
+
+        currentItems = items;
+        renderItems(items);
+      } catch (e) {
+        $('#err').textContent = e.message || 'Error';
+        renderItems([]);
+        currentItems = [];
+      } finally {
+        $('#spin').classList.remove('on');
+      }
+    }
+
+    async function init() {
+      const reporters = await buildAccountsUI();
+
+      // buttons
+      $('#allBtn').addEventListener('click', () => {
+        $$('#accountsBox input[type="checkbox"]').forEach(i => i.checked = true);
+        const list = $$('#accountsBox input[type="checkbox"]:checked').map(i => i.dataset.handle);
+        saveEnabledLocal(list); saveEnabledToServer(list);
+      });
+      $('#noneBtn').addEventListener('click', () => {
+        $$('#accountsBox input[type="checkbox"]').forEach(i => i.checked = false);
+        saveEnabledLocal([]); saveEnabledToServer([]);
+      });
+      $('#searchBtn').addEventListener('click', () => runSearch(reporters));
+
+      // copy
+      $('#copyTxt').addEventListener('click', () => copyPlain(collectSelected(currentItems)));
+      $('#copyCsv').addEventListener('click', () => copyCSV(collectSelected(currentItems)));
+      $('#copyHtml').addEventListener('click', () => copyHTML(collectSelected(currentItems)));
+
+      // Auto-run first search
+      await delay(50); // allow first paint
+      $('#searchBtn').click();
+    }
+
+    init();
+  </script>
 </body>
 </html>
