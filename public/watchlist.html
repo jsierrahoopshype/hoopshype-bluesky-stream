@@ -6,9 +6,9 @@
   <title>Bluesky Watchlist</title>
   <style>
     :root{
-      --bg:#ffffff; --text:#111; --muted:#5a6573;
-      --panel:#ffffff; --border:#d9e0ea; --accent:#0b77ff;
-      --chip:#f4f7fb; --chip-on:#e9f2ff;
+      --bg:#fff; --text:#111; --muted:#5a6573;
+      --panel:#fff; --border:#d9e0ea; --accent:#0b77ff;
+      --chip:#f4f7fb;
     }
     html,body{height:100%}
     body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,Segoe UI,Roboto,Helvetica,Arial}
@@ -30,12 +30,11 @@
     button.secondary{background:#eef3fb;color:#0b2b60;border:1px solid var(--border)}
     .chips{max-height:220px;overflow:auto;border:1px solid var(--border);border-radius:12px;padding:10px;margin-top:8px;background:#fff}
     .chip{display:inline-flex;align-items:center;gap:8px;background:var(--chip);border:1px solid var(--border);color:var(--text);border-radius:999px;padding:6px 10px;margin:6px 6px 0 0;white-space:nowrap}
-    .chip input{accent-color:var(--accent)}
     .muted{color:var(--muted)}
     .results{display:flex;flex-direction:column;gap:12px;margin-top:10px}
     .item{border:1px solid var(--border);border-radius:12px;padding:12px;background:#fff}
     .item .meta{font-size:12px;color:var(--muted);margin-bottom:6px;display:flex;gap:8px;flex-wrap:wrap}
-    .item img,.item video{max-width:100%;border-radius:8px;margin-top:8px;display:block}
+    .item img{max-width:100%;border-radius:8px;margin-top:8px;display:block}
     .right-sticky{position:sticky;top:12px;height:calc(100dvh - 48px)}
     .right-sticky .card{height:100%;display:flex;flex-direction:column}
     .right-sticky .card textarea{flex:1;min-height:200px;background:#fff;border:1px solid var(--border);border-radius:12px;color:var(--text);padding:10px;resize:vertical}
@@ -68,9 +67,9 @@
             <option value="reposts">Most reposts</option>
           </select>
           <label><input id="incReplies" type="checkbox"> Include replies</label>
-          <label><input id="incQuotes" type="checkbox"> Include quotes</label>
+          <label><input id="incQuotes" type="checkbox" checked> Include quotes</label>
           <label><input id="excReposts" type="checkbox" checked> Exclude reposts</label>
-          <label><input id="nocache" type="checkbox"> nocache</label>
+          <label><input id="nocache" type="checkbox" checked> nocache</label>
           <button id="searchBtn">Search <span id="spin" class="spinner"></span></button>
           <button id="allBtn" class="secondary">All</button>
           <button id="noneBtn" class="secondary">None</button>
@@ -102,19 +101,37 @@
   </div>
 
   <script>
-    // ------- helpers
+    // ---------- helpers
     const $ = s => document.querySelector(s);
     const $$ = s => Array.from(document.querySelectorAll(s));
     const delay = ms => new Promise(r => setTimeout(r, ms));
 
-    // ------- persistent enabled (Blobs + local fallback)
+    // ---------- persistence (Blobs + local fallback)
     const BLOB_KEY = 'watchlist-accounts';
-    async function loadBlob(){ try{const r=await fetch('/api/watchlist-accounts'); if(!r.ok) return null; const c=r.headers.get('content-type')||''; if(!c.includes('application/json')) return null; const j=await r.json(); return Array.isArray(j.enabled)?j.enabled:null;}catch{return null}}
-    async function saveBlob(enabled){ try{await fetch('/api/watchlist-accounts',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({enabled})})}catch{} }
-    function loadLocal(){ try{const x=localStorage.getItem(BLOB_KEY); return x?JSON.parse(x):null}catch{return null}}
-    function saveLocal(enabled){ try{localStorage.setItem(BLOB_KEY,JSON.stringify(enabled))}catch{} }
+    async function loadBlob(){
+      try{
+        const r=await fetch('/api/watchlist-accounts');
+        if(!r.ok) return null;
+        const ct=r.headers.get('content-type')||'';
+        if(!ct.includes('application/json')) return null;
+        const j=await r.json();
+        return Array.isArray(j.enabled)?j.enabled:null;
+      }catch{return null}
+    }
+    async function saveBlob(enabled){
+      try{
+        await fetch('/api/watchlist-accounts',{
+          method:'POST',headers:{'content-type':'application/json'},
+          body:JSON.stringify({enabled})
+        });
+      }catch{}
+    }
+    function loadLocal(){
+      try{ const x=localStorage.getItem(BLOB_KEY); return x!==null?JSON.parse(x):null }catch{return null}
+    }
+    function saveLocal(enabled){ try{ localStorage.setItem(BLOB_KEY,JSON.stringify(enabled)) }catch{} }
 
-    // ------- reporters.csv
+    // ---------- reporters.csv
     async function fetchReporters(){
       const res = await fetch('/reporters.csv?_=' + Date.now());
       const txt = await res.text();
@@ -131,15 +148,19 @@
       const reporters = await fetchReporters();
       const box = $('#accountsBox');
       box.innerHTML = '';
+
+      // precedence: server (even empty) -> local (even empty) -> default (all)
       const server = await loadBlob();
       const local = loadLocal();
-      let enabled = server || local || reporters.map(r=>r.handle);
+      const defaultAll = reporters.map(r=>r.handle);
+      const enabled = (server!==null) ? server : (local!==null ? local : defaultAll);
 
       reporters.forEach((r,i)=>{
         const id='acc_'+i;
+        const checked = enabled.includes(r.handle);
         const el = document.createElement('label');
         el.className='chip';
-        el.innerHTML = `<input type="checkbox" id="${id}" data-handle="${r.handle}" ${enabled.includes(r.handle)?'checked':''}/>
+        el.innerHTML = `<input type="checkbox" id="${id}" data-handle="${r.handle}" ${checked?'checked':''}/>
                         <span>${r.handle}</span>${r.priority?'<span class="pill">priority</span>':''}`;
         box.appendChild(el);
       });
@@ -152,7 +173,7 @@
       return reporters;
     }
 
-    // ------- selection + copy
+    // ---------- UI helpers
     function updateSelectedCounts(){ $('#selCount').textContent = $$('#results input[type="checkbox"]:checked').length; }
 
     function utm(url){
@@ -163,14 +184,25 @@
       }catch{return url}
     }
 
+    function extractVideoLink(it){
+      // Prefer explicit fields:
+      if (it.videoUrl) return it.videoUrl;
+      if (it.mediaUrl && /\.(mp4|webm|mov)(\?|$)/i.test(it.mediaUrl)) return it.mediaUrl;
+
+      // Fallback: sniff HTML/text for common video hosts
+      const s = (it.html || it.text || '');
+      const m = s.match(/https?:\/\/[^\s"')]+/g) || [];
+      const pick = m.find(u=>/(youtube\.com|youtu\.be|vimeo\.com|cdn|\.mp4|\.webm|\.mov)/i.test(u));
+      return pick || '';
+    }
+
     function renderItems(items){
       const container = $('#results');
       container.innerHTML='';
       const frag = document.createDocumentFragment();
 
       items.forEach((it,i)=>{
-        const vUrl = it.videoUrl || (it.mediaUrl && /\.(mp4|webm|mov)(\?|$)/i.test(it.mediaUrl) ? it.mediaUrl : '');
-        const isVideo = !!vUrl;
+        const vUrl = extractVideoLink(it);
 
         const el = document.createElement('div');
         el.className='item';
@@ -186,8 +218,7 @@
                 ${typeof it.repostCount==='number'?`<span class="muted">↻ ${it.repostCount}</span>`:''}
               </div>
               <div>${it.html || (it.text||'').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>
-              ${isVideo ? `<video controls playsinline preload="metadata" src="${vUrl}"></video>` : (it.mediaUrl?`<img src="${it.mediaUrl}" loading="lazy">`:``)}
-              ${!isVideo && it.videoUrl ? `<div class="muted" style="margin-top:6px;"><a href="${it.videoUrl}" target="_blank" rel="noopener">Open video</a></div>`:''}
+              ${vUrl ? `<div class="muted" style="margin-top:6px;"><a href="${vUrl}" target="_blank" rel="noopener">Open video</a></div>` : ''}
               ${it.url?`<div class="muted" style="margin-top:6px"><a href="${utm(it.url)}" target="_blank" rel="noopener">Open on Bluesky</a></div>`:''}
             </div>
           </label>
@@ -205,24 +236,27 @@
       return items.filter((_,i)=>idx.has(i));
     }
 
-    // Plain text exactly as requested: "Author: text\n\nlink?utm_source=hoopshype"
+    // Plain text EXACTLY: Author: text URL  (single line)
+    function oneLineText(s){
+      // collapse whitespace and line breaks
+      return (s||'').replace(/\s*\n+\s*/g,' ').replace(/\s\s+/g,' ').trim();
+    }
     function copyPlain(selected){
       const lines = selected.map(s=>{
         const author = s.authorDisplay || s.authorHandle || '';
-        const text = (s.text || '').replace(/\s+\n/g,'\n').replace(/\n\s+/g,'\n').trim();
+        const text = oneLineText(s.text || s.html?.replace(/<[^>]+>/g,' ') || '');
         const link = utm(s.url || '');
-        return `${author}: ${text}\n\n${link}`;
+        return `${author}: ${text} ${link}`.trim();
       });
-      const out = lines.join('\n\n');
+      const out = lines.join('\n');
       navigator.clipboard.writeText(out);
       $('#preview').value = out;
     }
-
     function toCSV(rows){
       const esc=v=>`"${String(v??'').replace(/"/g,'""')}"`;
       const head=['authorDisplay','authorHandle','tsLocal','likeCount','repostCount','url','text'];
       const lines=[head.map(esc).join(',')];
-      rows.forEach(r=>lines.push([r.authorDisplay,r.authorHandle,r.tsLocal,r.likeCount,r.repostCount,utm(r.url||''),(r.text||'').replace(/\s+/g,' ').trim()].map(esc).join(',')));
+      rows.forEach(r=>lines.push([r.authorDisplay,r.authorHandle,r.tsLocal,r.likeCount,r.repostCount,utm(r.url||''),oneLineText(r.text||'')].map(esc).join(',')));
       return lines.join('\n');
     }
     function copyCSV(selected){
@@ -232,27 +266,32 @@
       const html = selected.map(s=>{
         const line1 = `<strong>${s.authorDisplay || s.authorHandle || ''}</strong> <span style="color:#667">${s.tsLocal || ''}</span>`;
         const text = (s.text || '').replace(/\n/g,'<br>');
-        const link = s.url ? `<div><a href="${utm(s.url)}" target="_blank" rel="noopener">${utm(s.url)}</a></div>` : '';
+        const link = s.url ? ` <a href="${utm(s.url)}" target="_blank" rel="noopener">${utm(s.url)}</a>` : '';
         return `<p>${line1}<br>${text}${link}</p>`;
       }).join('\n');
       navigator.clipboard.writeText(html); $('#preview').value=html;
     }
 
-    // ------- stream batching with filtering (exclude reposts/quotes before trim)
+    // ---------- stream batching & strict repost filtering
     async function fetchStreamChunk(params){
       const qs = new URLSearchParams(params);
       const r = await fetch('/api/stream?'+qs.toString());
       const ct = r.headers.get('content-type')||'';
       if(!r.ok || !ct.includes('application/json')){
-        const t = await r.text();
         throw new Error(`Stream error (${r.status})`);
       }
       return r.json();
     }
 
+    // Stronger repost detector:
     function isRepostItem(it){
       if (it.isRepost === true) return true;
-      if ((it.text||'').trim().startsWith('[Repost')) return true;
+      // Many feeds render explicit “[Repost of …]” or “Repost:” at the start.
+      const t = (it.text || '').trim();
+      if (/^\[?repost\b/i.test(t)) return true;
+      // If html starts with a bracketed Repost tag
+      if (/^\s*\[repost/i.test((it.html||'').replace(/<[^>]+>/g,' '))) return true;
+      // Some streams flag via isQuote + no original text; but we *include quotes by default*.
       return false;
     }
 
@@ -263,8 +302,8 @@
       const CHUNK = 20;
       const chunks=[]; for(let i=0;i<allAuthors.length;i+=CHUNK) chunks.push(allAuthors.slice(i,i+CHUNK));
 
-      // over-fetch so filtering won’t starve the list
-      const perChunkLimit = Math.max(20, Math.ceil((limit*2)/chunks.length));
+      // Over-fetch (3×) so filtering won't starve the list
+      const perChunkLimit = Math.max(30, Math.ceil((limit*3)/chunks.length));
 
       const reqs = chunks.map(chunk => fetchStreamChunk({
         q: q || '',
@@ -272,7 +311,7 @@
         minReposts: minReposts || 0,
         minLikes: minLikes || 0,
         includeReplies: includeReplies ? 1 : 0,
-        includeQuotes: includeQuotes ? 1 : 0,
+        includeQuotes: includeQuotes ? 1 : 0,  // default true
         authors: chunk.join(','),
         limit: perChunkLimit,
         sort: sort || 'desc',
@@ -283,15 +322,14 @@
       const res = await Promise.all(reqs);
       const all = res.flatMap(x => Array.isArray(x.items)?x.items:[]);
 
-      // filter first
+      // strict filter FIRST
       let filtered = all.slice();
       if (excludeReposts) filtered = filtered.filter(it => !isRepostItem(it));
-      if (!includeQuotes) filtered = filtered.filter(it => !it.isQuote);
 
-      // de-dupe (by url or ts+handle)
+      // dedupe
       const seen = new Set(); const out=[];
       for(const it of filtered){
-        const key = it.url || `${it.ts}|${it.authorHandle}`;
+        const key = it.url || `${it.ts}|${it.authorHandle}|${it.text?.slice(0,50)}`;
         if(!seen.has(key)){ seen.add(key); out.push(it); }
       }
 
@@ -305,7 +343,7 @@
       return out.slice(0, limit || 60);
     }
 
-    // ------- UI-wire
+    // ---------- wire-up
     let currentItems = [];
 
     async function runSearch(reporters){
@@ -318,9 +356,9 @@
         const limit=+$('#limit').value||60;
         const sort=$('#sort').value;
         const includeReplies=$('#incReplies').checked;
-        const includeQuotes=$('#incQuotes').checked;
-        const excludeReposts=$('#excReposts').checked;
-        const nocache=$('#nocache').checked;
+        const includeQuotes=$('#incQuotes').checked; // default true
+        const excludeReposts=$('#excReposts').checked; // default true
+        const nocache=$('#nocache').checked; // default true
         const priorityFirst=$('#priorityFirst').checked;
 
         const authors = $$('#accountsBox input[type="checkbox"]:checked').map(i=>i.dataset.handle);
@@ -350,9 +388,12 @@
       $('#copyCsv').addEventListener('click',()=>copyCSV(collectSelected(currentItems)));
       $('#copyHtml').addEventListener('click',()=>copyHTML(collectSelected(currentItems)));
 
-      // auto-run on first load
-      await delay(50);
-      $('#searchBtn').click();
+      // auto-select ALL on first-ever visit (if nothing persisted), and auto-run
+      await delay(30);
+      if (loadLocal()===null && (await loadBlob())===null) {
+        $$('#accountsBox input[type="checkbox"]').forEach(i=>i.checked=true);
+      }
+      await runSearch(reporters); // auto search on page load
     }
 
     init();
