@@ -45,6 +45,8 @@
     .error{color:#c21d12;font-weight:600}
     a { color:#0b58d1; text-decoration:none }
     a:hover{ text-decoration:underline }
+    .links{margin-top:6px;font-size:12px;color:var(--muted)}
+    .links a{margin-right:8px}
   </style>
 </head>
 <body>
@@ -106,17 +108,22 @@
     const $$ = s => Array.from(document.querySelectorAll(s));
     const delay = ms => new Promise(r => setTimeout(r, ms));
 
-    // ---------- persistence (Blobs + local fallback)
     const BLOB_KEY = 'watchlist-accounts';
-    async function loadBlob(){
+    // Treat server value as "uninitialized" if updatedAt is null/undefined
+    async function loadBlobRaw(){
       try{
         const r=await fetch('/api/watchlist-accounts');
         if(!r.ok) return null;
         const ct=r.headers.get('content-type')||'';
         if(!ct.includes('application/json')) return null;
-        const j=await r.json();
-        return Array.isArray(j.enabled)?j.enabled:null;
+        return await r.json(); // {enabled:[], updatedAt:...}
       }catch{return null}
+    }
+    async function loadBlob(){
+      const obj = await loadBlobRaw();
+      if(!obj) return null;
+      if (obj.updatedAt == null) return null; // ignore empty bootstrap
+      return Array.isArray(obj.enabled) ? obj.enabled : null;
     }
     async function saveBlob(enabled){
       try{
@@ -131,7 +138,13 @@
     }
     function saveLocal(enabled){ try{ localStorage.setItem(BLOB_KEY,JSON.stringify(enabled)) }catch{} }
 
-    // ---------- reporters.csv
+    function profileUrl(handle, did){
+      if (did && /^did:plc:/.test(did)) return `https://bsky.app/profile/${did}`;
+      if (handle) return `https://bsky.app/profile/${handle.replace(/^@/,'')}`;
+      return '';
+    }
+
+    // reporters.csv
     async function fetchReporters(){
       const res = await fetch('/reporters.csv?_=' + Date.now());
       const txt = await res.text();
@@ -149,12 +162,14 @@
       const box = $('#accountsBox');
       box.innerHTML = '';
 
-      // precedence: server (even empty) -> local (even empty) -> default (all)
-      const server = await loadBlob();
-      const local = loadLocal();
+      const server = await loadBlob();       // null if none OR uninitialized
+      const local  = loadLocal();            // null if never saved locally
       const defaultAll = reporters.map(r=>r.handle);
+
+      // precedence: server (if not null) -> local (if not null) -> ALL
       const enabled = (server!==null) ? server : (local!==null ? local : defaultAll);
 
+      // build
       reporters.forEach((r,i)=>{
         const id='acc_'+i;
         const checked = enabled.includes(r.handle);
@@ -170,10 +185,16 @@
         saveLocal(list); saveBlob(list);
       });
 
+      // If we used ALL as default (first ever), persist that now so future loads keep it:
+      if (server===null && local===null) {
+        const list = $$('#accountsBox input[type="checkbox"]:checked').map(i=>i.dataset.handle);
+        saveLocal(list); saveBlob(list);
+      }
+
       return reporters;
     }
 
-    // ---------- UI helpers
+    // UI helpers
     function updateSelectedCounts(){ $('#selCount').textContent = $$('#results input[type="checkbox"]:checked').length; }
 
     function utm(url){
@@ -184,16 +205,34 @@
       }catch{return url}
     }
 
-    function extractVideoLink(it){
-      // Prefer explicit fields:
-      if (it.videoUrl) return it.videoUrl;
-      if (it.mediaUrl && /\.(mp4|webm|mov)(\?|$)/i.test(it.mediaUrl)) return it.mediaUrl;
+    function linkifyText(s) {
+      const urlRe = /https?:\/\/[^\s<>()'"]+/g;
+      return (s||'').replace(/\n/g,'<br>').replace(urlRe, m => `<a href="${m}" target="_blank" rel="noopener">${m}</a>`);
+    }
 
-      // Fallback: sniff HTML/text for common video hosts
-      const s = (it.html || it.text || '');
-      const m = s.match(/https?:\/\/[^\s"')]+/g) || [];
-      const pick = m.find(u=>/(youtube\.com|youtu\.be|vimeo\.com|cdn|\.mp4|\.webm|\.mov)/i.test(u));
-      return pick || '';
+    function collectLinksFromHTML(html){
+      const links = [];
+      if (!html) return links;
+      const div = document.createElement('div'); div.innerHTML = html;
+      div.querySelectorAll('a[href]').forEach(a => links.push(a.href));
+      // Also any <source src> inside <video>
+      div.querySelectorAll('source[src],video[src]').forEach(el=>links.push(el.getAttribute('src')));
+      return Array.from(new Set(links));
+    }
+    function collectLinksFromText(text){
+      const urlRe = /https?:\/\/[^\s<>()'"]+/g;
+      return (text.match(urlRe) || []);
+    }
+    function extractAllLinks(it){
+      const arr = [];
+      arr.push(...collectLinksFromHTML(it.html||''));
+      arr.push(...collectLinksFromText(it.text||''));
+      if (it.mediaUrl) arr.push(it.mediaUrl);
+      if (it.url) arr.push(it.url);
+      return Array.from(new Set(arr));
+    }
+    function pickVideo(links){
+      return links.find(u => /(youtube\.com|youtu\.be|vimeo\.com|\.mp4($|\?)|\.webm($|\?)|\.mov($|\?))/i.test(u)) || '';
     }
 
     function renderItems(items){
@@ -202,7 +241,22 @@
       const frag = document.createDocumentFragment();
 
       items.forEach((it,i)=>{
-        const vUrl = extractVideoLink(it);
+        const links = extractAllLinks(it);
+        const vUrl = pickVideo(links);
+        const blueskyUrl = utm(it.url || '');
+
+        const author = it.authorDisplay || it.authorHandle || '';
+        const profile = profileUrl(it.authorHandle, it.authorDid);
+        const authorHTML = profile ? `<a href="${profile}" target="_blank" rel="noopener">${author}</a>` : author;
+
+        const bodyHTML = it.html
+          ? it.html
+          : linkifyText(it.text || '');
+
+        const extraLinks = links.filter(u => u !== it.url);
+        const extraLinksHtml = extraLinks.length
+            ? `<div class="links">Links: ${extraLinks.map(u=>`<a href="${u}" target="_blank" rel="noopener">${u}</a>`).join(' ')}</div>`
+            : '';
 
         const el = document.createElement('div');
         el.className='item';
@@ -211,15 +265,16 @@
             <input type="checkbox" data-idx="${i}" />
             <div style="flex:1">
               <div class="meta">
-                <span>${it.authorDisplay || it.authorHandle || ''}</span>
+                <span>${authorHTML}</span>
                 ${it.authorHandle?`<span class="muted">${it.authorHandle}</span>`:''}
                 ${it.tsLocal?`<span class="muted">${it.tsLocal}</span>`:''}
                 ${typeof it.likeCount==='number'?`<span class="muted">❤ ${it.likeCount}</span>`:''}
                 ${typeof it.repostCount==='number'?`<span class="muted">↻ ${it.repostCount}</span>`:''}
               </div>
-              <div>${it.html || (it.text||'').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>
+              <div>${bodyHTML}</div>
               ${vUrl ? `<div class="muted" style="margin-top:6px;"><a href="${vUrl}" target="_blank" rel="noopener">Open video</a></div>` : ''}
-              ${it.url?`<div class="muted" style="margin-top:6px"><a href="${utm(it.url)}" target="_blank" rel="noopener">Open on Bluesky</a></div>`:''}
+              ${extraLinksHtml}
+              ${blueskyUrl?`<div class="muted" style="margin-top:6px"><a href="${blueskyUrl}" target="_blank" rel="noopener">Open on Bluesky</a></div>`:''}
             </div>
           </label>
         `;
@@ -236,15 +291,13 @@
       return items.filter((_,i)=>idx.has(i));
     }
 
-    // Plain text EXACTLY: Author: text URL  (single line)
     function oneLineText(s){
-      // collapse whitespace and line breaks
       return (s||'').replace(/\s*\n+\s*/g,' ').replace(/\s\s+/g,' ').trim();
     }
     function copyPlain(selected){
       const lines = selected.map(s=>{
         const author = s.authorDisplay || s.authorHandle || '';
-        const text = oneLineText(s.text || s.html?.replace(/<[^>]+>/g,' ') || '');
+        const text = oneLineText(s.text || (s.html||'').replace(/<[^>]+>/g,' '));
         const link = utm(s.url || '');
         return `${author}: ${text} ${link}`.trim();
       });
@@ -272,7 +325,15 @@
       navigator.clipboard.writeText(html); $('#preview').value=html;
     }
 
-    // ---------- stream batching & strict repost filtering
+    // strict repost filter
+    function isRepostItem(it){
+      if (it.isRepost === true) return true;
+      const ht = (it.html || '').replace(/<[^>]+>/g,' ').trim();
+      const tx = (it.text || '').trim();
+      if (/^\[?repost\b/i.test(ht) || /^\[?repost\b/i.test(tx)) return true;
+      return false;
+    }
+
     async function fetchStreamChunk(params){
       const qs = new URLSearchParams(params);
       const r = await fetch('/api/stream?'+qs.toString());
@@ -283,27 +344,14 @@
       return r.json();
     }
 
-    // Stronger repost detector:
-    function isRepostItem(it){
-      if (it.isRepost === true) return true;
-      // Many feeds render explicit “[Repost of …]” or “Repost:” at the start.
-      const t = (it.text || '').trim();
-      if (/^\[?repost\b/i.test(t)) return true;
-      // If html starts with a bracketed Repost tag
-      if (/^\s*\[repost/i.test((it.html||'').replace(/<[^>]+>/g,' '))) return true;
-      // Some streams flag via isQuote + no original text; but we *include quotes by default*.
-      return false;
-    }
-
     async function runBatchedStream(allAuthors, opts){
       const { q, hours, minReposts, minLikes, includeReplies, includeQuotes, excludeReposts, limit, sort, nocache, priorityFirst } = opts;
 
-      // chunk authors
       const CHUNK = 20;
       const chunks=[]; for(let i=0;i<allAuthors.length;i+=CHUNK) chunks.push(allAuthors.slice(i,i+CHUNK));
 
-      // Over-fetch (3×) so filtering won't starve the list
-      const perChunkLimit = Math.max(30, Math.ceil((limit*3)/chunks.length));
+      // generous over-fetch to avoid starving after filters
+      const perChunkLimit = Math.max(60, Math.ceil((limit*4)/chunks.length));
 
       const reqs = chunks.map(chunk => fetchStreamChunk({
         q: q || '',
@@ -311,7 +359,7 @@
         minReposts: minReposts || 0,
         minLikes: minLikes || 0,
         includeReplies: includeReplies ? 1 : 0,
-        includeQuotes: includeQuotes ? 1 : 0,  // default true
+        includeQuotes: includeQuotes ? 1 : 0,
         authors: chunk.join(','),
         limit: perChunkLimit,
         sort: sort || 'desc',
@@ -322,14 +370,14 @@
       const res = await Promise.all(reqs);
       const all = res.flatMap(x => Array.isArray(x.items)?x.items:[]);
 
-      // strict filter FIRST
+      // filter FIRST
       let filtered = all.slice();
       if (excludeReposts) filtered = filtered.filter(it => !isRepostItem(it));
 
       // dedupe
       const seen = new Set(); const out=[];
       for(const it of filtered){
-        const key = it.url || `${it.ts}|${it.authorHandle}|${it.text?.slice(0,50)}`;
+        const key = it.url || `${it.ts}|${it.authorHandle}|${it.text?.slice(0,60)}`;
         if(!seen.has(key)){ seen.add(key); out.push(it); }
       }
 
@@ -343,7 +391,6 @@
       return out.slice(0, limit || 60);
     }
 
-    // ---------- wire-up
     let currentItems = [];
 
     async function runSearch(reporters){
@@ -356,9 +403,9 @@
         const limit=+$('#limit').value||60;
         const sort=$('#sort').value;
         const includeReplies=$('#incReplies').checked;
-        const includeQuotes=$('#incQuotes').checked; // default true
-        const excludeReposts=$('#excReposts').checked; // default true
-        const nocache=$('#nocache').checked; // default true
+        const includeQuotes=$('#incQuotes').checked;
+        const excludeReposts=$('#excReposts').checked;
+        const nocache=$('#nocache').checked;
         const priorityFirst=$('#priorityFirst').checked;
 
         const authors = $$('#accountsBox input[type="checkbox"]:checked').map(i=>i.dataset.handle);
@@ -388,15 +435,13 @@
       $('#copyCsv').addEventListener('click',()=>copyCSV(collectSelected(currentItems)));
       $('#copyHtml').addEventListener('click',()=>copyHTML(collectSelected(currentItems)));
 
-      // auto-select ALL on first-ever visit (if nothing persisted), and auto-run
+      // Auto-run the very first time (and after this fix, also when the blob is uninitialized)
       await delay(30);
-      if (loadLocal()===null && (await loadBlob())===null) {
-        $$('#accountsBox input[type="checkbox"]').forEach(i=>i.checked=true);
-      }
-      await runSearch(reporters); // auto search on page load
+      await runSearch(reporters);
     }
 
     init();
   </script>
 </body>
 </html>
+
