@@ -5,35 +5,47 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Bluesky Watchlist</title>
   <style>
-    :root { --bg:#0b1220; --panel:#121a2a; --muted:#9fb0c9; --text:#e6eefb; --accent:#27c07d; --chip:#1a253b; --chip-on:#223251; --border:#24314a; }
+    :root{
+      --bg:#ffffff; --text:#111; --muted:#5a6573;
+      --panel:#ffffff; --border:#d9e0ea; --accent:#0b77ff;
+      --chip:#f4f7fb; --chip-on:#e9f2ff;
+    }
     html,body{height:100%}
-    body{margin:0;background:var(--bg);color:var(--text);font:14px/1.4 system-ui,Segoe UI,Roboto,Helvetica,Arial}
-    h1{font-weight:600;font-size:18px;margin:0 0 10px}
+    body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,Segoe UI,Roboto,Helvetica,Arial}
+    h1{font-weight:700;font-size:20px;margin:0 0 12px}
     .wrap{max-width:1200px;margin:24px auto;padding:0 16px}
-    .grid{display:grid;grid-template-columns:1fr 350px;gap:16px}
-    .card{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:14px}
+    .grid{display:grid;grid-template-columns:1fr 360px;gap:16px}
+    .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px}
     .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
     .row > *{min-height:36px}
-    input[type="number"],input[type="text"],select{background:#0e1627;border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:8px}
+    input[type="number"],input[type="text"],select{
+      background:#fff;border:1px solid var(--border);color:var(--text);
+      padding:8px 10px;border-radius:8px
+    }
     input[type="checkbox"]{transform:translateY(1px)}
-    button{background:var(--accent);color:#072114;border:0;border-radius:8px;padding:9px 14px;font-weight:600;cursor:pointer}
-    button.secondary{background:#1f2b42;color:var(--text)}
-    .chips{max-height:200px;overflow:auto;border:1px solid var(--border);border-radius:10px;padding:10px;margin-top:8px}
+    button{
+      background:var(--accent);color:#fff;border:0;border-radius:8px;
+      padding:9px 14px;font-weight:700;cursor:pointer
+    }
+    button.secondary{background:#eef3fb;color:#0b2b60;border:1px solid var(--border)}
+    .chips{max-height:220px;overflow:auto;border:1px solid var(--border);border-radius:12px;padding:10px;margin-top:8px;background:#fff}
     .chip{display:inline-flex;align-items:center;gap:8px;background:var(--chip);border:1px solid var(--border);color:var(--text);border-radius:999px;padding:6px 10px;margin:6px 6px 0 0;white-space:nowrap}
     .chip input{accent-color:var(--accent)}
     .muted{color:var(--muted)}
     .results{display:flex;flex-direction:column;gap:12px;margin-top:10px}
-    .item{border:1px solid var(--border);border-radius:10px;padding:12px;background:#0f182b}
+    .item{border:1px solid var(--border);border-radius:12px;padding:12px;background:#fff}
     .item .meta{font-size:12px;color:var(--muted);margin-bottom:6px;display:flex;gap:8px;flex-wrap:wrap}
-    .item img{max-width:100%;border-radius:8px;margin-top:8px}
+    .item img,.item video{max-width:100%;border-radius:8px;margin-top:8px;display:block}
     .right-sticky{position:sticky;top:12px;height:calc(100dvh - 48px)}
     .right-sticky .card{height:100%;display:flex;flex-direction:column}
-    .right-sticky .card textarea{flex:1;min-height:200px;background:#0e1627;border:1px solid var(--border);border-radius:10px;color:var(--text);padding:10px;resize:vertical}
-    .pill{display:inline-flex;background:#0f2434;border:1px solid var(--border);border-radius:999px;padding:4px 8px;font-size:12px;margin-right:6px}
+    .right-sticky .card textarea{flex:1;min-height:200px;background:#fff;border:1px solid var(--border);border-radius:12px;color:var(--text);padding:10px;resize:vertical}
+    .pill{display:inline-flex;background:#eef3fb;border:1px solid var(--border);border-radius:999px;padding:4px 8px;font-size:12px;margin-right:6px}
     .spinner{display:none}
     .spinner.on{display:inline-block;inline-size:14px;block-size:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
     @keyframes spin{to{transform:rotate(360deg)}}
-    .error{color:#ff8b8b}
+    .error{color:#c21d12;font-weight:600}
+    a { color:#0b58d1; text-decoration:none }
+    a:hover{ text-decoration:underline }
   </style>
 </head>
 <body>
@@ -56,6 +68,8 @@
             <option value="reposts">Most reposts</option>
           </select>
           <label><input id="incReplies" type="checkbox"> Include replies</label>
+          <label><input id="incQuotes" type="checkbox"> Include quotes</label>
+          <label><input id="excReposts" type="checkbox" checked> Exclude reposts</label>
           <label><input id="nocache" type="checkbox"> nocache</label>
           <button id="searchBtn">Search <span id="spin" class="spinner"></span></button>
           <button id="allBtn" class="secondary">All</button>
@@ -88,189 +102,169 @@
   </div>
 
   <script>
-    // ---------- Utility ----------
+    // ------- helpers
     const $ = s => document.querySelector(s);
     const $$ = s => Array.from(document.querySelectorAll(s));
     const delay = ms => new Promise(r => setTimeout(r, ms));
 
-    // ---------- Persistent enabled accounts (Blobs with localStorage fallback) ----------
-    const ACCOUNTS_BLOB_KEY = 'watchlist-accounts';
-    async function loadEnabledFromServer() {
-      try {
-        const res = await fetch('/api/watchlist-accounts');
-        if (!res.ok) return null;
-        const ct = res.headers.get('content-type') || '';
-        if (!ct.includes('application/json')) return null;
-        const json = await res.json();
-        return Array.isArray(json.enabled) ? json.enabled : null;
-      } catch { return null; }
-    }
-    async function saveEnabledToServer(enabled) {
-      try {
-        await fetch('/api/watchlist-accounts', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ enabled })
-        });
-      } catch {}
-    }
-    function loadEnabledLocal() {
-      try {
-        const x = localStorage.getItem(ACCOUNTS_BLOB_KEY);
-        return x ? JSON.parse(x) : null;
-      } catch { return null; }
-    }
-    function saveEnabledLocal(enabled) {
-      try { localStorage.setItem(ACCOUNTS_BLOB_KEY, JSON.stringify(enabled)); } catch {}
-    }
+    // ------- persistent enabled (Blobs + local fallback)
+    const BLOB_KEY = 'watchlist-accounts';
+    async function loadBlob(){ try{const r=await fetch('/api/watchlist-accounts'); if(!r.ok) return null; const c=r.headers.get('content-type')||''; if(!c.includes('application/json')) return null; const j=await r.json(); return Array.isArray(j.enabled)?j.enabled:null;}catch{return null}}
+    async function saveBlob(enabled){ try{await fetch('/api/watchlist-accounts',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({enabled})})}catch{} }
+    function loadLocal(){ try{const x=localStorage.getItem(BLOB_KEY); return x?JSON.parse(x):null}catch{return null}}
+    function saveLocal(enabled){ try{localStorage.setItem(BLOB_KEY,JSON.stringify(enabled))}catch{} }
 
-    // ---------- Reporters CSV ----------
-    async function fetchReporters() {
+    // ------- reporters.csv
+    async function fetchReporters(){
       const res = await fetch('/reporters.csv?_=' + Date.now());
       const txt = await res.text();
-      // CSV: handle,priority (optional priority=true)
       const lines = txt.trim().split(/\r?\n/).filter(Boolean);
-      return lines.map((line) => {
-        const [handleRaw, priRaw] = line.split(',').map(s => s.trim());
-        const handle = handleRaw.startsWith('@') ? handleRaw : '@' + handleRaw;
-        const priority = (priRaw || '').toLowerCase() === 'true';
-        return { handle, priority };
+      return lines.map(line=>{
+        const [h,p] = line.split(',').map(s=>s.trim());
+        const handle = h.startsWith('@')?h:'@'+h;
+        const priority = (p||'').toLowerCase()==='true';
+        return {handle, priority};
       });
     }
 
-    // ---------- Build account chips ----------
-    async function buildAccountsUI() {
+    async function buildAccountsUI(){
       const reporters = await fetchReporters();
       const box = $('#accountsBox');
       box.innerHTML = '';
-      const enabledServer = await loadEnabledFromServer();
-      const enabledLocal = loadEnabledLocal();
-      let enabled = enabledServer || enabledLocal || reporters.map(r => r.handle); // default: all
+      const server = await loadBlob();
+      const local = loadLocal();
+      let enabled = server || local || reporters.map(r=>r.handle);
 
-      reporters.forEach((r, idx) => {
-        const id = 'acc_' + idx;
-        const chip = document.createElement('label');
-        chip.className = 'chip';
-        chip.innerHTML = `
-          <input type="checkbox" id="${id}" data-handle="${r.handle}" ${enabled.includes(r.handle) ? 'checked' : ''}/>
-          <span>${r.handle}</span>
-          ${r.priority ? '<span class="pill">priority</span>' : ''}
-        `;
-        box.appendChild(chip);
+      reporters.forEach((r,i)=>{
+        const id='acc_'+i;
+        const el = document.createElement('label');
+        el.className='chip';
+        el.innerHTML = `<input type="checkbox" id="${id}" data-handle="${r.handle}" ${enabled.includes(r.handle)?'checked':''}/>
+                        <span>${r.handle}</span>${r.priority?'<span class="pill">priority</span>':''}`;
+        box.appendChild(el);
       });
 
-      // Persist selection on change
-      box.addEventListener('change', () => {
-        const list = $$('#accountsBox input[type="checkbox"]:checked').map(i => i.dataset.handle);
-        saveEnabledLocal(list);
-        saveEnabledToServer(list); // best effort
+      box.addEventListener('change', ()=>{
+        const list = $$('#accountsBox input[type="checkbox"]:checked').map(i=>i.dataset.handle);
+        saveLocal(list); saveBlob(list);
       });
 
       return reporters;
     }
 
-    // ---------- Results selection & copy ----------
-    function updateSelectedCounts() {
-      const n = $$('#results input[type="checkbox"]:checked').length;
-      $('#selCount').textContent = n;
+    // ------- selection + copy
+    function updateSelectedCounts(){ $('#selCount').textContent = $$('#results input[type="checkbox"]:checked').length; }
+
+    function utm(url){
+      try{
+        const u = new URL(url);
+        if(!u.searchParams.has('utm_source')) u.searchParams.set('utm_source','hoopshype');
+        return u.toString();
+      }catch{return url}
     }
-    function renderItems(items) {
-      const results = $('#results');
-      results.innerHTML = '';
+
+    function renderItems(items){
+      const container = $('#results');
+      container.innerHTML='';
       const frag = document.createDocumentFragment();
 
-      items.forEach((it, i) => {
+      items.forEach((it,i)=>{
+        const vUrl = it.videoUrl || (it.mediaUrl && /\.(mp4|webm|mov)(\?|$)/i.test(it.mediaUrl) ? it.mediaUrl : '');
+        const isVideo = !!vUrl;
+
         const el = document.createElement('div');
-        el.className = 'item';
+        el.className='item';
         el.innerHTML = `
           <label style="display:flex;gap:10px;align-items:start;">
             <input type="checkbox" data-idx="${i}" />
             <div style="flex:1">
               <div class="meta">
                 <span>${it.authorDisplay || it.authorHandle || ''}</span>
-                ${it.authorHandle ? `<span class="muted">${it.authorHandle}</span>` : ''}
-                ${it.tsLocal ? `<span class="muted">${it.tsLocal}</span>` : ''}
-                ${typeof it.likeCount === 'number' ? `<span class="muted">❤ ${it.likeCount}</span>` : ''}
-                ${typeof it.repostCount === 'number' ? `<span class="muted">↻ ${it.repostCount}</span>` : ''}
+                ${it.authorHandle?`<span class="muted">${it.authorHandle}</span>`:''}
+                ${it.tsLocal?`<span class="muted">${it.tsLocal}</span>`:''}
+                ${typeof it.likeCount==='number'?`<span class="muted">❤ ${it.likeCount}</span>`:''}
+                ${typeof it.repostCount==='number'?`<span class="muted">↻ ${it.repostCount}</span>`:''}
               </div>
-              <div>${it.html || it.text || ''}</div>
-              ${it.mediaUrl ? `<img src="${it.mediaUrl}" loading="lazy">` : ''}
-              ${it.url ? `<div class="muted" style="margin-top:6px"><a href="${it.url}" target="_blank" rel="noopener">Open on Bluesky</a></div>` : ''}
+              <div>${it.html || (it.text||'').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>
+              ${isVideo ? `<video controls playsinline preload="metadata" src="${vUrl}"></video>` : (it.mediaUrl?`<img src="${it.mediaUrl}" loading="lazy">`:``)}
+              ${!isVideo && it.videoUrl ? `<div class="muted" style="margin-top:6px;"><a href="${it.videoUrl}" target="_blank" rel="noopener">Open video</a></div>`:''}
+              ${it.url?`<div class="muted" style="margin-top:6px"><a href="${utm(it.url)}" target="_blank" rel="noopener">Open on Bluesky</a></div>`:''}
             </div>
           </label>
         `;
         frag.appendChild(el);
       });
 
-      results.appendChild(frag);
-      results.addEventListener('change', (e) => {
-        if (e.target.matches('input[type="checkbox"]')) updateSelectedCounts();
-      }, { once: true }); // attach once
+      container.appendChild(frag);
+      container.addEventListener('change',(e)=>{ if(e.target.matches('input[type="checkbox"]')) updateSelectedCounts(); }, {once:true});
       updateSelectedCounts();
     }
 
-    function collectSelected(items) {
-      const idxs = new Set($$('#results input[type="checkbox"]:checked').map(i => +i.dataset.idx));
-      return items.filter((_, i) => idxs.has(i));
+    function collectSelected(items){
+      const idx = new Set($$('#results input[type="checkbox"]:checked').map(i=>+i.dataset.idx));
+      return items.filter((_,i)=>idx.has(i));
     }
 
-    function copyPlain(selected) {
-      const lines = selected.map(s => `• ${s.authorDisplay || s.authorHandle || ''} — ${s.text?.replace(/\s+/g, ' ').trim() || ''}\n${s.url || ''}`);
+    // Plain text exactly as requested: "Author: text\n\nlink?utm_source=hoopshype"
+    function copyPlain(selected){
+      const lines = selected.map(s=>{
+        const author = s.authorDisplay || s.authorHandle || '';
+        const text = (s.text || '').replace(/\s+\n/g,'\n').replace(/\n\s+/g,'\n').trim();
+        const link = utm(s.url || '');
+        return `${author}: ${text}\n\n${link}`;
+      });
       const out = lines.join('\n\n');
       navigator.clipboard.writeText(out);
       $('#preview').value = out;
     }
 
-    function toCSV(rows) {
-      const esc = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
-      const headers = ['authorDisplay','authorHandle','tsLocal','likeCount','repostCount','url','text'];
-      const lines = [headers.map(esc).join(',')];
-      rows.forEach(r => {
-        lines.push([
-          r.authorDisplay, r.authorHandle, r.tsLocal, r.likeCount, r.repostCount, r.url, (r.text || '').replace(/\s+/g,' ').trim()
-        ].map(esc).join(','));
-      });
+    function toCSV(rows){
+      const esc=v=>`"${String(v??'').replace(/"/g,'""')}"`;
+      const head=['authorDisplay','authorHandle','tsLocal','likeCount','repostCount','url','text'];
+      const lines=[head.map(esc).join(',')];
+      rows.forEach(r=>lines.push([r.authorDisplay,r.authorHandle,r.tsLocal,r.likeCount,r.repostCount,utm(r.url||''),(r.text||'').replace(/\s+/g,' ').trim()].map(esc).join(',')));
       return lines.join('\n');
     }
-
-    function copyCSV(selected) {
-      const out = toCSV(selected);
-      navigator.clipboard.writeText(out);
-      $('#preview').value = out;
+    function copyCSV(selected){
+      const out=toCSV(selected); navigator.clipboard.writeText(out); $('#preview').value=out;
     }
-
-    function copyHTML(selected) {
-      // Simple publisher-safe list (no embeds)
-      const html = selected.map(s => {
+    function copyHTML(selected){
+      const html = selected.map(s=>{
         const line1 = `<strong>${s.authorDisplay || s.authorHandle || ''}</strong> <span style="color:#667">${s.tsLocal || ''}</span>`;
         const text = (s.text || '').replace(/\n/g,'<br>');
-        const link = s.url ? `<div><a href="${s.url}" target="_blank" rel="noopener">${s.url}</a></div>` : '';
+        const link = s.url ? `<div><a href="${utm(s.url)}" target="_blank" rel="noopener">${utm(s.url)}</a></div>` : '';
         return `<p>${line1}<br>${text}${link}</p>`;
       }).join('\n');
-      navigator.clipboard.writeText(html);
-      $('#preview').value = html;
+      navigator.clipboard.writeText(html); $('#preview').value=html;
     }
 
-    // ---------- Stream batching (fix for long URLs) ----------
-    async function fetchStreamChunk(params) {
-      // GET /api/stream with short query
-      const usp = new URLSearchParams(params);
-      const res = await fetch('/api/stream?' + usp.toString());
-      const ct = res.headers.get('content-type') || '';
-      if (!res.ok || !ct.includes('application/json')) {
-        const text = await res.text();
-        throw new Error(`Stream error (${res.status}): ${text.slice(0,200)}`);
+    // ------- stream batching with filtering (exclude reposts/quotes before trim)
+    async function fetchStreamChunk(params){
+      const qs = new URLSearchParams(params);
+      const r = await fetch('/api/stream?'+qs.toString());
+      const ct = r.headers.get('content-type')||'';
+      if(!r.ok || !ct.includes('application/json')){
+        const t = await r.text();
+        throw new Error(`Stream error (${r.status})`);
       }
-      return res.json();
+      return r.json();
     }
 
-    async function runBatchedStream(allAuthors, { q, hours, minReposts, minLikes, includeReplies, includeQuotes, limit, sort, nocache, priorityFirst }) {
-      // Chunk authors to keep URL short (about 20 handles per call is safe)
-      const CHUNK = 20;
-      const chunks = [];
-      for (let i=0; i<allAuthors.length; i+=CHUNK) chunks.push(allAuthors.slice(i,i+CHUNK));
+    function isRepostItem(it){
+      if (it.isRepost === true) return true;
+      if ((it.text||'').trim().startsWith('[Repost')) return true;
+      return false;
+    }
 
-      const perChunkLimit = Math.max(10, Math.ceil((limit || 60) / chunks.length)); // rough split
+    async function runBatchedStream(allAuthors, opts){
+      const { q, hours, minReposts, minLikes, includeReplies, includeQuotes, excludeReposts, limit, sort, nocache, priorityFirst } = opts;
+
+      // chunk authors
+      const CHUNK = 20;
+      const chunks=[]; for(let i=0;i<allAuthors.length;i+=CHUNK) chunks.push(allAuthors.slice(i,i+CHUNK));
+
+      // over-fetch so filtering won’t starve the list
+      const perChunkLimit = Math.max(20, Math.ceil((limit*2)/chunks.length));
 
       const reqs = chunks.map(chunk => fetchStreamChunk({
         q: q || '',
@@ -286,92 +280,78 @@
         priorityFirst: priorityFirst ? 1 : 0
       }));
 
-      const results = await Promise.all(reqs);
-      // Each response is assumed {items:[...]}
-      const items = results.flatMap(r => Array.isArray(r.items) ? r.items : []);
+      const res = await Promise.all(reqs);
+      const all = res.flatMap(x => Array.isArray(x.items)?x.items:[]);
 
-      // De-dupe by url (or ts+handle fallback)
-      const seen = new Set();
-      const deduped = [];
-      for (const it of items) {
+      // filter first
+      let filtered = all.slice();
+      if (excludeReposts) filtered = filtered.filter(it => !isRepostItem(it));
+      if (!includeQuotes) filtered = filtered.filter(it => !it.isQuote);
+
+      // de-dupe (by url or ts+handle)
+      const seen = new Set(); const out=[];
+      for(const it of filtered){
         const key = it.url || `${it.ts}|${it.authorHandle}`;
-        if (!seen.has(key)) { seen.add(key); deduped.push(it); }
+        if(!seen.has(key)){ seen.add(key); out.push(it); }
       }
 
-      // Sort
-      const s = (sort || 'desc');
-      if (s === 'likes') deduped.sort((a,b)=>(b.likeCount||0)-(a.likeCount||0));
-      else if (s === 'reposts') deduped.sort((a,b)=>(b.repostCount||0)-(a.repostCount||0));
-      else if (s === 'asc') deduped.sort((a,b)=> new Date(a.ts||a.tsLocal||0) - new Date(b.ts||b.tsLocal||0));
-      else deduped.sort((a,b)=> new Date(b.ts||b.tsLocal||0) - new Date(a.ts||a.tsLocal||0));
+      // sort
+      const s = sort || 'desc';
+      if (s==='likes') out.sort((a,b)=>(b.likeCount||0)-(a.likeCount||0));
+      else if (s==='reposts') out.sort((a,b)=>(b.repostCount||0)-(a.repostCount||0));
+      else if (s==='asc') out.sort((a,b)=> new Date(a.ts||a.tsLocal||0)-new Date(b.ts||b.tsLocal||0));
+      else out.sort((a,b)=> new Date(b.ts||b.tsLocal||0)-new Date(a.ts||a.tsLocal||0));
 
-      // Final slice
-      return deduped.slice(0, limit || 60);
+      return out.slice(0, limit || 60);
     }
 
-    // ---------- Wire up UI ----------
+    // ------- UI-wire
     let currentItems = [];
 
-    async function runSearch(reporters) {
-      $('#err').textContent = '';
-      $('#spin').classList.add('on');
-      try {
-        const q = $('#q').value.trim();
-        const hours = +$('#hours').value || 6;
-        const minReposts = +$('#minReposts').value || 0;
-        const minLikes = +$('#minLikes').value || 0;
-        const limit = +$('#limit').value || 60;
-        const sort = $('#sort').value;
-        const includeReplies = $('#incReplies').checked;
-        const includeQuotes = false;
-        const nocache = $('#nocache').checked;
-        const priorityFirst = $('#priorityFirst').checked;
+    async function runSearch(reporters){
+      $('#err').textContent=''; $('#spin').classList.add('on');
+      try{
+        const q=$('#q').value.trim();
+        const hours=+$('#hours').value||6;
+        const minReposts=+$('#minReposts').value||0;
+        const minLikes=+$('#minLikes').value||0;
+        const limit=+$('#limit').value||60;
+        const sort=$('#sort').value;
+        const includeReplies=$('#incReplies').checked;
+        const includeQuotes=$('#incQuotes').checked;
+        const excludeReposts=$('#excReposts').checked;
+        const nocache=$('#nocache').checked;
+        const priorityFirst=$('#priorityFirst').checked;
 
-        const selectedAuthors = $$('#accountsBox input[type="checkbox"]:checked').map(i => i.dataset.handle);
-        if (selectedAuthors.length === 0) {
-          renderItems([]);
-          currentItems = [];
-          return;
-        }
+        const authors = $$('#accountsBox input[type="checkbox"]:checked').map(i=>i.dataset.handle);
+        if(authors.length===0){ renderItems([]); currentItems=[]; return; }
 
-        // batch (fix long URL)
-        const items = await runBatchedStream(selectedAuthors, {
-          q, hours, minReposts, minLikes, includeReplies, includeQuotes, limit, sort, nocache, priorityFirst
-        });
-
-        currentItems = items;
-        renderItems(items);
-      } catch (e) {
-        $('#err').textContent = e.message || 'Error';
-        renderItems([]);
-        currentItems = [];
-      } finally {
-        $('#spin').classList.remove('on');
-      }
+        const items = await runBatchedStream(authors,{q,hours,minReposts,minLikes,includeReplies,includeQuotes,excludeReposts,limit,sort,nocache,priorityFirst});
+        currentItems = items; renderItems(items);
+      }catch(e){ $('#err').textContent=e.message||'Error'; renderItems([]); currentItems=[]; }
+      finally{ $('#spin').classList.remove('on'); }
     }
 
-    async function init() {
+    async function init(){
       const reporters = await buildAccountsUI();
 
-      // buttons
-      $('#allBtn').addEventListener('click', () => {
-        $$('#accountsBox input[type="checkbox"]').forEach(i => i.checked = true);
-        const list = $$('#accountsBox input[type="checkbox"]:checked').map(i => i.dataset.handle);
-        saveEnabledLocal(list); saveEnabledToServer(list);
+      $('#allBtn').addEventListener('click',()=>{
+        $$('#accountsBox input[type="checkbox"]').forEach(i=>i.checked=true);
+        const list=$$('#accountsBox input[type="checkbox"]:checked').map(i=>i.dataset.handle);
+        saveLocal(list); saveBlob(list);
       });
-      $('#noneBtn').addEventListener('click', () => {
-        $$('#accountsBox input[type="checkbox"]').forEach(i => i.checked = false);
-        saveEnabledLocal([]); saveEnabledToServer([]);
+      $('#noneBtn').addEventListener('click',()=>{
+        $$('#accountsBox input[type="checkbox"]').forEach(i=>i.checked=false);
+        saveLocal([]); saveBlob([]);
       });
-      $('#searchBtn').addEventListener('click', () => runSearch(reporters));
 
-      // copy
-      $('#copyTxt').addEventListener('click', () => copyPlain(collectSelected(currentItems)));
-      $('#copyCsv').addEventListener('click', () => copyCSV(collectSelected(currentItems)));
-      $('#copyHtml').addEventListener('click', () => copyHTML(collectSelected(currentItems)));
+      $('#searchBtn').addEventListener('click',()=>runSearch(reporters));
+      $('#copyTxt').addEventListener('click',()=>copyPlain(collectSelected(currentItems)));
+      $('#copyCsv').addEventListener('click',()=>copyCSV(collectSelected(currentItems)));
+      $('#copyHtml').addEventListener('click',()=>copyHTML(collectSelected(currentItems)));
 
-      // Auto-run first search
-      await delay(50); // allow first paint
+      // auto-run on first load
+      await delay(50);
       $('#searchBtn').click();
     }
 
