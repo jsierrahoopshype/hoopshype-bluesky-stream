@@ -34,7 +34,9 @@
     .results{display:flex;flex-direction:column;gap:12px;margin-top:10px}
     .item{border:1px solid var(--border);border-radius:12px;padding:12px;background:#fff}
     .item .meta{font-size:12px;color:var(--muted);margin-bottom:6px;display:flex;gap:8px;flex-wrap:wrap}
-    .item img{max-width:100%;border-radius:8px;margin-top:8px;display:block}
+    .thumb{max-width:100%;border-radius:8px;margin-top:8px;display:block}
+    .thumb-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+    .thumb-row img{max-width:260px;border-radius:8px;border:1px solid var(--border)}
     .right-sticky{position:sticky;top:12px;height:calc(100dvh - 48px)}
     .right-sticky .card{height:100%;display:flex;flex-direction:column}
     .right-sticky .card textarea{flex:1;min-height:200px;background:#fff;border:1px solid var(--border);border-radius:12px;color:var(--text);padding:10px;resize:vertical}
@@ -56,10 +58,10 @@
       <div class="card">
         <div class="row">
           <input id="q" type="text" placeholder="(optional filter in post text)" style="flex:1 1 320px">
-          <label>Lookback (hours) <input id="hours" type="number" min="1" value="6" style="width:80px"></label>
+          <label>Lookback (hours) <input id="hours" type="number" min="1" value="24" style="width:80px"></label>
           <label>Min reposts <input id="minReposts" type="number" min="0" value="0" style="width:70px"></label>
           <label>Min likes <input id="minLikes" type="number" min="0" value="0" style="width:70px"></label>
-          <label>Limit (total) <input id="limit" type="number" min="1" value="60" style="width:80px"></label>
+          <label>Limit (total) <input id="limit" type="number" min="1" value="120" style="width:80px"></label>
         </div>
         <div class="row" style="margin-top:8px">
           <select id="sort">
@@ -103,27 +105,28 @@
   </div>
 
   <script>
-    // ---------- helpers
+    /********** helpers **********/
     const $ = s => document.querySelector(s);
     const $$ = s => Array.from(document.querySelectorAll(s));
     const delay = ms => new Promise(r => setTimeout(r, ms));
 
     const BLOB_KEY = 'watchlist-accounts';
-    // Treat server value as "uninitialized" if updatedAt is null/undefined
+
+    // blob helpers (null/undefined updatedAt means "uninitialized")
     async function loadBlobRaw(){
       try{
         const r=await fetch('/api/watchlist-accounts');
         if(!r.ok) return null;
         const ct=r.headers.get('content-type')||'';
         if(!ct.includes('application/json')) return null;
-        return await r.json(); // {enabled:[], updatedAt:...}
+        return await r.json();
       }catch{return null}
     }
     async function loadBlob(){
       const obj = await loadBlobRaw();
       if(!obj) return null;
-      if (obj.updatedAt == null) return null; // ignore empty bootstrap
-      return Array.isArray(obj.enabled) ? obj.enabled : null;
+      if (obj.updatedAt == null) return null;        // treat as empty / not set
+      return Array.isArray(obj.enabled)?obj.enabled:null;
     }
     async function saveBlob(enabled){
       try{
@@ -138,13 +141,20 @@
     }
     function saveLocal(enabled){ try{ localStorage.setItem(BLOB_KEY,JSON.stringify(enabled)) }catch{} }
 
+    function utm(url){
+      try{
+        const u = new URL(url);
+        if(!u.searchParams.has('utm_source')) u.searchParams.set('utm_source','hoopshype');
+        return u.toString();
+      }catch{return url}
+    }
     function profileUrl(handle, did){
       if (did && /^did:plc:/.test(did)) return `https://bsky.app/profile/${did}`;
       if (handle) return `https://bsky.app/profile/${handle.replace(/^@/,'')}`;
       return '';
     }
 
-    // reporters.csv
+    /********** reporters.csv **********/
     async function fetchReporters(){
       const res = await fetch('/reporters.csv?_=' + Date.now());
       const txt = await res.text();
@@ -159,24 +169,23 @@
 
     async function buildAccountsUI(){
       const reporters = await fetchReporters();
-      const box = $('#accountsBox');
-      box.innerHTML = '';
+      const box = $('#accountsBox'); box.innerHTML = '';
 
-      const server = await loadBlob();       // null if none OR uninitialized
-      const local  = loadLocal();            // null if never saved locally
+      const server = await loadBlob();     // null if unset
+      const local  = loadLocal();          // null if unset
       const defaultAll = reporters.map(r=>r.handle);
 
-      // precedence: server (if not null) -> local (if not null) -> ALL
+      // precedence: server -> local -> ALL
       const enabled = (server!==null) ? server : (local!==null ? local : defaultAll);
 
-      // build
       reporters.forEach((r,i)=>{
         const id='acc_'+i;
         const checked = enabled.includes(r.handle);
         const el = document.createElement('label');
         el.className='chip';
         el.innerHTML = `<input type="checkbox" id="${id}" data-handle="${r.handle}" ${checked?'checked':''}/>
-                        <span>${r.handle}</span>${r.priority?'<span class="pill">priority</span>':''}`;
+                        <a href="${profileUrl(r.handle)}" target="_blank" rel="noopener">${r.handle}</a>
+                        ${r.priority?'<span class="pill">priority</span>':''}`;
         box.appendChild(el);
       });
 
@@ -185,43 +194,31 @@
         saveLocal(list); saveBlob(list);
       });
 
-      // If we used ALL as default (first ever), persist that now so future loads keep it:
+      // if first run, persist ALL so future loads stick
       if (server===null && local===null) {
-        const list = $$('#accountsBox input[type="checkbox"]:checked').map(i=>i.dataset.handle);
-        saveLocal(list); saveBlob(list);
+        saveLocal(defaultAll); saveBlob(defaultAll);
       }
 
       return reporters;
     }
 
-    // UI helpers
-    function updateSelectedCounts(){ $('#selCount').textContent = $$('#results input[type="checkbox"]:checked').length; }
-
-    function utm(url){
-      try{
-        const u = new URL(url);
-        if(!u.searchParams.has('utm_source')) u.searchParams.set('utm_source','hoopshype');
-        return u.toString();
-      }catch{return url}
-    }
+    /********** render helpers (images & videos) **********/
+    const URL_RE = /https?:\/\/[^\s<>()'"]+/g;
 
     function linkifyText(s) {
-      const urlRe = /https?:\/\/[^\s<>()'"]+/g;
-      return (s||'').replace(/\n/g,'<br>').replace(urlRe, m => `<a href="${m}" target="_blank" rel="noopener">${m}</a>`);
+      return (s||'').replace(/\n/g,'<br>').replace(URL_RE, m => `<a href="${m}" target="_blank" rel="noopener">${m}</a>`);
     }
-
     function collectLinksFromHTML(html){
       const links = [];
       if (!html) return links;
       const div = document.createElement('div'); div.innerHTML = html;
       div.querySelectorAll('a[href]').forEach(a => links.push(a.href));
-      // Also any <source src> inside <video>
-      div.querySelectorAll('source[src],video[src]').forEach(el=>links.push(el.getAttribute('src')));
+      div.querySelectorAll('img[src]').forEach(img=>links.push(img.getAttribute('src')));
+      div.querySelectorAll('source[src],video[src]').forEach(v=>links.push(v.getAttribute('src')));
       return Array.from(new Set(links));
     }
     function collectLinksFromText(text){
-      const urlRe = /https?:\/\/[^\s<>()'"]+/g;
-      return (text.match(urlRe) || []);
+      return (text||'').match(URL_RE) || [];
     }
     function extractAllLinks(it){
       const arr = [];
@@ -231,10 +228,32 @@
       if (it.url) arr.push(it.url);
       return Array.from(new Set(arr));
     }
-    function pickVideo(links){
-      return links.find(u => /(youtube\.com|youtu\.be|vimeo\.com|\.mp4($|\?)|\.webm($|\?)|\.mov($|\?))/i.test(u)) || '';
+
+    // detect media images (bsky cdn, jpg/png/gif) and create thumbnails
+    function pickImages(links){
+      return links.filter(u => /cdn\.bsky\.app\/img|\.jpg($|\?)|\.jpeg($|\?)|\.png($|\?)|\.gif($|\?)/i.test(u));
+    }
+    // simple YouTube ID → poster
+    function youtubeId(u){
+      try{
+        const url=new URL(u);
+        if (url.hostname.includes('youtu.be')) return url.pathname.slice(1);
+        if (url.hostname.includes('youtube.com')){
+          if (url.searchParams.get('v')) return url.searchParams.get('v');
+          const m=url.pathname.match(/\/shorts\/([^/]+)/); if(m) return m[1];
+        }
+      }catch{}
+      return '';
+    }
+    function pickVideoThumb(links){
+      for(const u of links){
+        const id = youtubeId(u);
+        if(id) return `https://img.youtube.com/vi/${id}/hqdefault.jpg`;
+      }
+      return '';
     }
 
+    /********** result rendering **********/
     function renderItems(items){
       const container = $('#results');
       container.innerHTML='';
@@ -242,16 +261,15 @@
 
       items.forEach((it,i)=>{
         const links = extractAllLinks(it);
-        const vUrl = pickVideo(links);
+        const imgLinks = pickImages(links);
+        const ytPoster = pickVideoThumb(links);
         const blueskyUrl = utm(it.url || '');
 
         const author = it.authorDisplay || it.authorHandle || '';
         const profile = profileUrl(it.authorHandle, it.authorDid);
         const authorHTML = profile ? `<a href="${profile}" target="_blank" rel="noopener">${author}</a>` : author;
 
-        const bodyHTML = it.html
-          ? it.html
-          : linkifyText(it.text || '');
+        const bodyHTML = it.html ? it.html : linkifyText(it.text || '');
 
         const extraLinks = links.filter(u => u !== it.url);
         const extraLinksHtml = extraLinks.length
@@ -272,7 +290,17 @@
                 ${typeof it.repostCount==='number'?`<span class="muted">↻ ${it.repostCount}</span>`:''}
               </div>
               <div>${bodyHTML}</div>
-              ${vUrl ? `<div class="muted" style="margin-top:6px;"><a href="${vUrl}" target="_blank" rel="noopener">Open video</a></div>` : ''}
+
+              ${imgLinks.length ? `
+                <div class="thumb-row">
+                  ${imgLinks.map(u=>`<a href="${u}" target="_blank" rel="noopener"><img class="thumb" loading="lazy" src="${u}"></a>`).join('')}
+                </div>` : ''}
+
+              ${!imgLinks.length && ytPoster ? `
+                <a href="${blueskyUrl}" target="_blank" rel="noopener">
+                  <img class="thumb" loading="lazy" src="${ytPoster}" alt="">
+                </a>` : ''}
+
               ${extraLinksHtml}
               ${blueskyUrl?`<div class="muted" style="margin-top:6px"><a href="${blueskyUrl}" target="_blank" rel="noopener">Open on Bluesky</a></div>`:''}
             </div>
@@ -286,14 +314,16 @@
       updateSelectedCounts();
     }
 
+    function updateSelectedCounts(){ $('#selCount').textContent = $$('#results input[type="checkbox"]:checked').length; }
+
+    function oneLineText(s){
+      return (s||'').replace(/\s*\n+\s*/g,' ').replace(/\s\s+/g,' ').trim();
+    }
     function collectSelected(items){
       const idx = new Set($$('#results input[type="checkbox"]:checked').map(i=>+i.dataset.idx));
       return items.filter((_,i)=>idx.has(i));
     }
 
-    function oneLineText(s){
-      return (s||'').replace(/\s*\n+\s*/g,' ').replace(/\s\s+/g,' ').trim();
-    }
     function copyPlain(selected){
       const lines = selected.map(s=>{
         const author = s.authorDisplay || s.authorHandle || '';
@@ -325,7 +355,7 @@
       navigator.clipboard.writeText(html); $('#preview').value=html;
     }
 
-    // strict repost filter
+    /********** stream fetching **********/
     function isRepostItem(it){
       if (it.isRepost === true) return true;
       const ht = (it.html || '').replace(/<[^>]+>/g,' ').trim();
@@ -333,7 +363,6 @@
       if (/^\[?repost\b/i.test(ht) || /^\[?repost\b/i.test(tx)) return true;
       return false;
     }
-
     async function fetchStreamChunk(params){
       const qs = new URLSearchParams(params);
       const r = await fetch('/api/stream?'+qs.toString());
@@ -344,18 +373,19 @@
       return r.json();
     }
 
+    // more aggressive batching to avoid missing posts (Keith Pompey etc.)
     async function runBatchedStream(allAuthors, opts){
       const { q, hours, minReposts, minLikes, includeReplies, includeQuotes, excludeReposts, limit, sort, nocache, priorityFirst } = opts;
 
-      const CHUNK = 20;
+      const CHUNK = 15; // smaller chunks → more parallel calls
       const chunks=[]; for(let i=0;i<allAuthors.length;i+=CHUNK) chunks.push(allAuthors.slice(i,i+CHUNK));
 
-      // generous over-fetch to avoid starving after filters
-      const perChunkLimit = Math.max(60, Math.ceil((limit*4)/chunks.length));
+      // BIG over-fetch per chunk then filter/dedupe & trim
+      const perChunkLimit = Math.max(100, Math.ceil((limit*6)/chunks.length));
 
       const reqs = chunks.map(chunk => fetchStreamChunk({
         q: q || '',
-        hours: hours || 6,
+        hours: hours || 24,
         minReposts: minReposts || 0,
         minLikes: minLikes || 0,
         includeReplies: includeReplies ? 1 : 0,
@@ -370,14 +400,13 @@
       const res = await Promise.all(reqs);
       const all = res.flatMap(x => Array.isArray(x.items)?x.items:[]);
 
-      // filter FIRST
       let filtered = all.slice();
       if (excludeReposts) filtered = filtered.filter(it => !isRepostItem(it));
 
       // dedupe
       const seen = new Set(); const out=[];
       for(const it of filtered){
-        const key = it.url || `${it.ts}|${it.authorHandle}|${it.text?.slice(0,60)}`;
+        const key = it.url || `${it.ts}|${it.authorHandle}|${(it.text||'').slice(0,60)}`;
         if(!seen.has(key)){ seen.add(key); out.push(it); }
       }
 
@@ -388,7 +417,7 @@
       else if (s==='asc') out.sort((a,b)=> new Date(a.ts||a.tsLocal||0)-new Date(b.ts||b.tsLocal||0));
       else out.sort((a,b)=> new Date(b.ts||b.tsLocal||0)-new Date(a.ts||a.tsLocal||0));
 
-      return out.slice(0, limit || 60);
+      return out.slice(0, limit || 120);
     }
 
     let currentItems = [];
@@ -397,10 +426,10 @@
       $('#err').textContent=''; $('#spin').classList.add('on');
       try{
         const q=$('#q').value.trim();
-        const hours=+$('#hours').value||6;
+        const hours=+$('#hours').value||24;
         const minReposts=+$('#minReposts').value||0;
         const minLikes=+$('#minLikes').value||0;
-        const limit=+$('#limit').value||60;
+        const limit=+$('#limit').value||120;
         const sort=$('#sort').value;
         const includeReplies=$('#incReplies').checked;
         const includeQuotes=$('#incQuotes').checked;
@@ -435,7 +464,8 @@
       $('#copyCsv').addEventListener('click',()=>copyCSV(collectSelected(currentItems)));
       $('#copyHtml').addEventListener('click',()=>copyHTML(collectSelected(currentItems)));
 
-      // Auto-run the very first time (and after this fix, also when the blob is uninitialized)
+      // *** Auto-select ALL & auto-run on first load ***
+      // If blob/local is empty we already persisted ALL in buildAccountsUI, so now just run.
       await delay(30);
       await runSearch(reporters);
     }
@@ -444,4 +474,3 @@
   </script>
 </body>
 </html>
-
